@@ -1,17 +1,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
-import { supabase, CATEGORIES } from '@/lib/supabase'
+import { supabase, CATEGORIES, CATEGORY_ICONS } from '@/lib/supabase'
 import { supabaseAdmin } from '@/lib/supabase-server'
-
-const categoryIcons: Record<string, string> = {
-  '누수': '💧',
-  '화장실': '🚿',
-  '배관': '🔩',
-  '페인트': '🎨',
-  '주방': '🍳',
-  '리모델링': '🏠',
-  '기타': '🛠️',
-}
 
 const steps = [
   { num: '01', title: '견적 요청', desc: '어떤 수리가 필요한지\n간단히 입력하세요', icon: '📝' },
@@ -156,7 +146,7 @@ export default async function Home() {
                 href={`/requests?category=${encodeURIComponent(cat)}`}
                 className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-all group"
               >
-                <span className="text-3xl">{categoryIcons[cat]}</span>
+                <span className="text-3xl">{CATEGORY_ICONS[cat]}</span>
                 <span className="text-sm font-medium text-gray-700 group-hover:text-blue-600">{cat}</span>
               </Link>
             ))}

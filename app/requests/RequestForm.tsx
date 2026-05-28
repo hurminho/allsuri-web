@@ -2,19 +2,9 @@
 
 import { useState, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { supabase, CATEGORIES } from '@/lib/supabase'
+import { supabase, CATEGORIES, CATEGORY_ICONS } from '@/lib/supabase'
 
 type Step = 1 | 2 | 3
-
-const categoryIcons: Record<string, string> = {
-  '누수': '💧',
-  '화장실': '🚿',
-  '배관': '🔩',
-  '방수': '🧱',
-  '주방': '🍳',
-  '리모델링': '🏠',
-  '기타': '🛠️',
-}
 
 interface FormData {
   category: string
@@ -289,7 +279,7 @@ export default function RequestForm() {
                       : 'border-gray-200 text-gray-600 hover:border-blue-300'
                   }`}
                 >
-                  <span className="text-2xl">{categoryIcons[cat]}</span>
+                  <span className="text-2xl">{CATEGORY_ICONS[cat as keyof typeof CATEGORY_ICONS]}</span>
                   <span className="text-xs">{cat}</span>
                 </button>
               ))}
@@ -412,7 +402,7 @@ export default function RequestForm() {
           {/* 입력 내용 요약 */}
           <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600 space-y-1">
             <div className="font-semibold text-gray-700 mb-2">입력 내용 확인</div>
-            <div>카테고리: <span className="text-gray-800">{form.category} {categoryIcons[form.category]}</span></div>
+            <div>카테고리: <span className="text-gray-800">{form.category} {CATEGORY_ICONS[form.category as keyof typeof CATEGORY_ICONS]}</span></div>
             <div>제목: <span className="text-gray-800">{form.title}</span></div>
             <div className="truncate">설명: <span className="text-gray-800">{form.description.slice(0, 40)}{form.description.length > 40 ? '...' : ''}</span></div>
           </div>
