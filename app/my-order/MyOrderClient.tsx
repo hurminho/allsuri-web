@@ -14,6 +14,7 @@ interface Estimate {
   createdAt: string; status: string; isAwarded: boolean; isBid?: boolean
   region?: string; bizDescription?: string; avatarUrl?: string | null
   hasBusinessReg?: boolean; jobsCount?: number
+  avgRating?: number | null; reviewCount?: number
 }
 interface Business {
   id: string; name: string; businessname: string; phonenumber: string
@@ -446,7 +447,16 @@ export default function MyOrderClient() {
                             {e.personName && e.personName !== e.businessName && (
                               <p className="text-xs text-gray-400 mt-0.5">사장님 성함: {e.personName}</p>
                             )}
-                            <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 flex-wrap">
+                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
+                              {typeof e.avgRating === 'number' && e.avgRating > 0 ? (
+                                <span className="flex items-center gap-1">
+                                  <span className="text-yellow-400"><Stars value={e.avgRating} size="text-xs" /></span>
+                                  <span className="font-semibold text-gray-700">{e.avgRating.toFixed(1)}</span>
+                                  <span className="text-gray-400">({e.reviewCount ?? 0})</span>
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">평점 없음</span>
+                              )}
                               {e.equipmentType && <span>🔧 {e.equipmentType}</span>}
                               {e.region && <span>📍 {e.region}</span>}
                               {(e.jobsCount ?? 0) > 0 && <span>✅ 완료 {e.jobsCount}건</span>}

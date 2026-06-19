@@ -82,22 +82,55 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     ;(bidders || []).forEach((b: UserRow) => { biddersMap[b.id] = b })
   }
 
+  // 입찰자 평점 일괄 조회 (business_reviews 우선, 실패 시 무시)
+  const ratingMap: Record<string, { avg: number | null; count: number }> = {}
+  if (bidderIds.length > 0) {
+    try {
+      const { data: reviews } = await supabaseAdmin
+        .from('business_reviews')
+        .select('business_id, rating')
+        .in('business_id', bidderIds)
+      const buckets: Record<string, number[]> = {}
+      ;(reviews || []).forEach((r: { business_id: string; rating: number | null }) => {
+        if (!r.business_id) return
+        if (!buckets[r.business_id]) buckets[r.business_id] = []
+        if (typeof r.rating === 'number') buckets[r.business_id].push(r.rating)
+      })
+      bidderIds.forEach((bid) => {
+        const arr = buckets[bid] || []
+        if (arr.length === 0) {
+          ratingMap[bid] = { avg: null, count: 0 }
+        } else {
+          const avg = Math.round((arr.reduce((s, n) => s + n, 0) / arr.length) * 10) / 10
+          ratingMap[bid] = { avg, count: arr.length }
+        }
+      })
+    } catch (e) {
+      console.warn('[my-order] bidder ratings query failed (ignored):', e)
+    }
+  }
+
   const estimates = bids.map(b => {
     const biz = biddersMap[b.bidder_id] || ({} as UserRow)
     const rawBiz = (biz.businessname || '').trim()
-    const businessName = rawBiz || '상호명 없음'
+    const rawName = (biz.name || '').trim()
+    // 상호명 → 사장님 성함 → '사업자' 순으로 폴백 (익명 표시 방지)
+    const businessName = rawBiz || rawName || '사업자'
     const region = biz.address || (Array.isArray(biz.serviceareas) ? biz.serviceareas.join(', ') : '') || ''
+    const rating = ratingMap[b.bidder_id] || { avg: null, count: 0 }
     return {
       id: b.id,
       businessId: b.bidder_id,
       businessName,
-      personName: biz.name || '',
+      personName: rawName,
       equipmentType: biz.category || '',
       region,
       bizDescription: biz.bio || '',
       avatarUrl: biz.avatar_url || null,
       hasBusinessReg: !!(biz.businessnumber && biz.businessnumber.trim()),
       jobsCount: biz.jobs_accepted_count || 0,
+      avgRating: rating.avg,
+      reviewCount: rating.count,
       amount: b.bid_amount || 0,
       description: b.message || '',
       estimatedDays: b.estimated_days || 0,
