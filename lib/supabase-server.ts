@@ -1,6 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { resolvePersonName } from '@/lib/business-profile'
+
+export { resolvePersonName }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -61,6 +64,7 @@ export type BusinessUserProfile = {
   id: string
   name: string | null
   businessname: string | null
+  representative_name: string | null
   category: string | null
   region: string | null
   address: string | null
@@ -72,11 +76,21 @@ export type BusinessUserProfile = {
   specialties: string[] | null
 }
 
+function parseRatingValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number(value)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
 function normalizeBusinessUserRow(row: Record<string, unknown>): BusinessUserProfile {
   return {
     id: String(row.id),
     name: (row.name as string | null | undefined) ?? null,
     businessname: (row.businessname ?? row.business_name ?? row.businessName) as string | null ?? null,
+    representative_name: ((row.representative_name ?? row.representativeName ?? row.owner_name ?? row.ownername) as string | null | undefined) ?? null,
     category: (row.category as string | null | undefined) ?? null,
     region: (row.region as string | null | undefined) ?? null,
     address: (row.address as string | null | undefined) ?? null,
@@ -89,11 +103,35 @@ function normalizeBusinessUserRow(row: Record<string, unknown>): BusinessUserPro
   }
 }
 
+function mergeRatingsIntoMap(
+  ids: string[],
+  rows: Record<string, unknown>[] | null | undefined,
+  ratingMap: Record<string, { avg: number | null; count: number }>,
+) {
+  const buckets: Record<string, number[]> = {}
+  for (const row of rows || []) {
+    const bizId = pickRowField<string>(row, 'business_id', 'businessid', 'businessId', 'user_id', 'userid')
+    const rating = parseRatingValue(row.rating ?? row.score ?? row.stars)
+    if (!bizId || !ids.includes(bizId) || rating === null) continue
+    if (!buckets[bizId]) buckets[bizId] = []
+    buckets[bizId].push(rating)
+  }
+  ids.forEach((id) => {
+    const arr = buckets[id] || []
+    if (arr.length === 0) return
+    ratingMap[id] = {
+      avg: Math.round((arr.reduce((s, n) => s + n, 0) / arr.length) * 10) / 10,
+      count: arr.length,
+    }
+  })
+}
+
 /** users 테이블 컬럼 불일치 시에도 사업자 프로필을 조회 (존재하는 컬럼만 순차 시도) */
 export async function fetchBusinessUsersByIds(ids: string[]): Promise<Record<string, BusinessUserProfile>> {
   if (ids.length === 0) return {}
 
   const selects = [
+    'id, name, businessname, representative_name, owner_name, avatar_url, address, serviceareas, specialties, jobs_accepted_count, category, bio, region, description, profile_image_url',
     'id, name, businessname, avatar_url, address, serviceareas, specialties, jobs_accepted_count, category, bio, region, description, profile_image_url',
     'id, name, businessname, phonenumber, category, region, description, profile_image_url, projects_awarded_count',
     'id, name, businessname, category, region',
@@ -117,7 +155,7 @@ export async function fetchBusinessUsersByIds(ids: string[]): Promise<Record<str
   return {}
 }
 
-/** business_reviews 컬럼명(business_id / businessid) 차이를 흡수 */
+/** business_reviews 컬럼명·rating 타입 차이를 흡수 */
 export async function fetchBusinessRatingsByIds(
   ids: string[],
 ): Promise<Record<string, { avg: number | null; count: number }>> {
@@ -125,32 +163,28 @@ export async function fetchBusinessRatingsByIds(
   ids.forEach((id) => { ratingMap[id] = { avg: null, count: 0 } })
   if (ids.length === 0) return ratingMap
 
-  for (const businessIdColumn of ['business_id', 'businessid'] as const) {
+  for (const businessIdColumn of ['business_id', 'businessid', 'user_id', 'userid'] as const) {
     const { data, error } = await supabaseAdmin
       .from('business_reviews')
-      .select(`${businessIdColumn}, rating`)
+      .select('*')
       .in(businessIdColumn, ids)
     if (error) {
       console.warn('[fetchBusinessRatingsByIds] query failed:', businessIdColumn, error.message)
       continue
     }
+    mergeRatingsIntoMap(ids, (data || []) as Record<string, unknown>[], ratingMap)
+    if (ids.some((id) => ratingMap[id].count > 0)) return ratingMap
+  }
 
-    const buckets: Record<string, number[]> = {}
-    for (const row of data || []) {
-      const bizId = (row as Record<string, unknown>)[businessIdColumn] as string | undefined
-      const rating = (row as Record<string, unknown>).rating
-      if (!bizId || typeof rating !== 'number') continue
-      if (!buckets[bizId]) buckets[bizId] = []
-      buckets[bizId].push(rating)
-    }
-
-    ids.forEach((id) => {
-      const arr = buckets[id] || []
-      ratingMap[id] = arr.length === 0
-        ? { avg: null, count: 0 }
-        : { avg: Math.round((arr.reduce((s, n) => s + n, 0) / arr.length) * 10) / 10, count: arr.length }
-    })
-    return ratingMap
+  // 컬럼명 불일치 시 ID별 개별 조회 (사업자 프로필 페이지와 동일)
+  for (const id of ids) {
+    if (ratingMap[id].count > 0) continue
+    const { data, error } = await supabaseAdmin
+      .from('business_reviews')
+      .select('*')
+      .eq('business_id', id)
+    if (error) continue
+    mergeRatingsIntoMap([id], (data || []) as Record<string, unknown>[], ratingMap)
   }
 
   return ratingMap

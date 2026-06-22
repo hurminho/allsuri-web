@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { resolvePersonName } from '@/lib/business-profile'
 
 // ── 타입 ────────────────────────────────────────────────────────────
 interface OrderSummary {
@@ -364,7 +365,15 @@ export default function MyOrderClient() {
                   const bizCategory = biz?.category || est?.equipmentType
                   const bizRegion = biz?.region || est?.region
                   const bizId = biz?.id || est?.businessId
-                  const bizPersonName = biz?.name || est?.personName
+                  const bizPersonName = biz
+                    ? resolvePersonName({
+                        name: biz.name,
+                        businessname: biz.businessname,
+                        representative_name: (biz as { representative_name?: string | null }).representative_name,
+                      })
+                    : est?.personName
+                  const bizRating = est?.avgRating
+                  const bizReviewCount = est?.reviewCount ?? 0
                   return bizName ? (
                     <button onClick={() => {
                       if (biz) {
@@ -375,8 +384,15 @@ export default function MyOrderClient() {
                       }
                     }} className="w-full text-left">
                       <p className="font-bold text-gray-900 text-base">{bizName}</p>
-                      {bizPersonName && bizPersonName !== bizName && (
+                      {bizPersonName && (
                         <p className="text-xs text-gray-400 mt-0.5">사장님 성함: {bizPersonName}</p>
+                      )}
+                      {bizReviewCount > 0 && typeof bizRating === 'number' && (
+                        <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                          <span className="text-yellow-400"><Stars value={bizRating} size="text-xs" /></span>
+                          <span className="font-semibold text-gray-700">{bizRating.toFixed(1)}</span>
+                          <span className="text-gray-400">({bizReviewCount})</span>
+                        </p>
                       )}
                       <p className="text-sm text-gray-500 mt-0.5">
                         {bizCategory}{bizRegion ? ' · ' + bizRegion : ''}
@@ -444,11 +460,11 @@ export default function MyOrderClient() {
                                 <span className="text-xs bg-green-50 text-green-700 border border-green-300 rounded-full px-2 py-0.5 font-semibold">사업자등록</span>
                               )}
                             </div>
-                            {e.personName && e.personName !== e.businessName && (
+                            {e.personName && (
                               <p className="text-xs text-gray-400 mt-0.5">사장님 성함: {e.personName}</p>
                             )}
                             <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
-                              {typeof e.avgRating === 'number' && e.avgRating > 0 ? (
+                              {(e.reviewCount ?? 0) > 0 && typeof e.avgRating === 'number' ? (
                                 <span className="flex items-center gap-1">
                                   <span className="text-yellow-400"><Stars value={e.avgRating} size="text-xs" /></span>
                                   <span className="font-semibold text-gray-700">{e.avgRating.toFixed(1)}</span>

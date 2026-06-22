@@ -7,6 +7,7 @@ import {
   pickRowField,
   type BusinessUserProfile,
 } from '@/lib/supabase-server'
+import { resolvePersonName } from '@/lib/business-profile'
 
 async function verifyOrder(orderId: string, phone: string, password: string) {
   const { data } = await supabaseAdmin
@@ -95,6 +96,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       id: b.bidder_id,
       name: null,
       businessname: null,
+      representative_name: null,
       category: null,
       region: null,
       address: null,
@@ -106,16 +108,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       specialties: null,
     }
     const rawBiz = (biz.businessname || '').trim()
-    const rawName = (biz.name || '').trim()
+    const rawName = resolvePersonName(biz)
     // 상호명 → 사장님 성함 → '사업자' 순으로 폴백 (익명 표시 방지)
     const businessName = rawBiz || rawName || '사업자'
+    const personName = rawName || null
     const region = biz.region || biz.address || (Array.isArray(biz.serviceareas) ? biz.serviceareas.join(', ') : '') || ''
     const rating = ratingMap[b.bidder_id] || { avg: null, count: 0 }
     return {
       id: b.id,
       businessId: b.bidder_id,
       businessName,
-      personName: rawName,
+      personName,
       equipmentType: biz.category || '',
       region,
       bizDescription: biz.bio || '',
