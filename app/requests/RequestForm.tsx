@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { supabase, CATEGORIES, CATEGORY_ICONS } from '@/lib/supabase'
+import { supabase, CATEGORIES, CATEGORY_ICONS, isCategory } from '@/lib/supabase'
 
 type Step = 1 | 2 | 3
 
@@ -67,7 +67,7 @@ export default function RequestForm() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState<FormData>({
-    category: CATEGORIES.includes(initialCategory) ? initialCategory : '기타',
+    category: isCategory(initialCategory) ? initialCategory : '기타',
     title: '',
     description: '',
     address: '',

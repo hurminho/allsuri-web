@@ -15,7 +15,13 @@ export const CATEGORIES = [
   '기타',
 ] as const
 
-export const CATEGORY_ICONS: Record<(typeof CATEGORIES)[number], string> = {
+export type Category = (typeof CATEGORIES)[number]
+
+export function isCategory(value: string): value is Category {
+  return (CATEGORIES as readonly string[]).includes(value)
+}
+
+export const CATEGORY_ICONS: Record<Category, string> = {
   '누수': '💧',
   '화장실': '🚿',
   '배관': '🔩',
