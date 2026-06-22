@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 
 export default function Footer() {
   return (
@@ -6,7 +7,7 @@ export default function Footer() {
       <div className="max-w-5xl mx-auto px-4 py-10 grid grid-cols-1 md:grid-cols-3 gap-8">
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-xl">🔧</span>
+            <Image src="/app-icon.png" alt="올수리" width={32} height={32} className="rounded-lg" />
             <span className="text-white font-bold text-lg">올수리</span>
           </div>
           <p className="text-sm text-gray-400 leading-relaxed">

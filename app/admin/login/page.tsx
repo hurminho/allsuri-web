@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Image from 'next/image'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { Suspense } from 'react'
 
@@ -51,7 +52,7 @@ function LoginForm() {
     <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="text-4xl mb-3">🔧</div>
+          <Image src="/app-icon.png" alt="올수리" width={48} height={48} className="rounded-xl mx-auto mb-3" />
           <h1 className="text-xl font-bold text-gray-900">올수리 관리자</h1>
           <p className="text-sm text-gray-400 mt-1">관리자 계정으로 로그인하세요</p>
         </div>
