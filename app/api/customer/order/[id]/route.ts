@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin, normalizePhone } from '@/lib/supabase-server'
+import {
+  supabaseAdmin,
+  normalizePhone,
+  fetchBusinessUsersByIds,
+  fetchBusinessRatingsByIds,
+  pickRowField,
+  type BusinessUserProfile,
+} from '@/lib/supabase-server'
 
 async function verifyOrder(orderId: string, phone: string, password: string) {
   const { data } = await supabaseAdmin
@@ -47,76 +54,62 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // 입찰 목록: marketplace_listing의 order_bids 우선 사용 (B2B와 동일 흐름)
   type BidRow = {
-    id: string; bidder_id: string; message: string | null
-    status: string; bid_amount: number | null; estimated_days: number | null; created_at: string
+    id: string
+    bidder_id: string
+    message: string | null
+    status: string
+    bid_amount: number | null
+    estimated_days: number | null
+    created_at: string
   }
   let bids: BidRow[] = []
   if (listingId) {
     const query = supabaseAdmin
       .from('order_bids')
-      .select('id, bidder_id, message, status, bid_amount, estimated_days, created_at')
+      .select('*')
       .eq('listing_id', listingId)
       .order('created_at', { ascending: true })
-    // 낙찰 후에는 선택된 입찰만 조회 (rejected/pending 숨김)
     const { data: bidsData } = isOrderAwarded
       ? await query.eq('status', 'selected')
       : await query
-    bids = (bidsData || []) as BidRow[]
+    bids = (bidsData || []).map((raw) => {
+      const row = raw as Record<string, unknown>
+      return {
+        id: String(row.id),
+        bidder_id: String(pickRowField<string>(row, 'bidder_id', 'bidderId', 'bidderid', 'user_id', 'userid') || ''),
+        message: pickRowField<string>(row, 'message'),
+        status: String(pickRowField<string>(row, 'status') || ''),
+        bid_amount: pickRowField<number>(row, 'bid_amount', 'bidAmount', 'amount'),
+        estimated_days: pickRowField<number>(row, 'estimated_days', 'estimatedDays'),
+        created_at: String(pickRowField<string>(row, 'created_at', 'createdAt', 'createdat') || ''),
+      }
+    }).filter((b) => b.id && b.bidder_id)
   }
 
-  // 입찰자 사업자 정보 조회 (실제 존재하는 컬럼만 select)
-  const bidderIds = [...new Set(bids.map(b => b.bidder_id).filter(Boolean))]
-  type UserRow = {
-    id: string; name: string | null; businessname: string | null; category: string | null
-    address: string | null; bio: string | null; avatar_url: string | null
-    businessnumber: string | null; jobs_accepted_count: number | null
-    serviceareas: string[] | null; specialties: string[] | null
-  }
-  const biddersMap: Record<string, UserRow> = {}
-  if (bidderIds.length > 0) {
-    const { data: bidders, error: biddersErr } = await supabaseAdmin
-      .from('users')
-      .select('id, name, businessname, category, address, bio, avatar_url, businessnumber, jobs_accepted_count, serviceareas, specialties')
-      .in('id', bidderIds)
-    if (biddersErr) console.warn('[my-order] bidders query error:', biddersErr)
-    ;(bidders || []).forEach((b: UserRow) => { biddersMap[b.id] = b })
-  }
+  const bidderIds = [...new Set(bids.map((b) => b.bidder_id).filter(Boolean))]
+  const biddersMap = await fetchBusinessUsersByIds(bidderIds)
+  const ratingMap = await fetchBusinessRatingsByIds(bidderIds)
 
-  // 입찰자 평점 일괄 조회 (business_reviews 우선, 실패 시 무시)
-  const ratingMap: Record<string, { avg: number | null; count: number }> = {}
-  if (bidderIds.length > 0) {
-    try {
-      const { data: reviews } = await supabaseAdmin
-        .from('business_reviews')
-        .select('business_id, rating')
-        .in('business_id', bidderIds)
-      const buckets: Record<string, number[]> = {}
-      ;(reviews || []).forEach((r: { business_id: string; rating: number | null }) => {
-        if (!r.business_id) return
-        if (!buckets[r.business_id]) buckets[r.business_id] = []
-        if (typeof r.rating === 'number') buckets[r.business_id].push(r.rating)
-      })
-      bidderIds.forEach((bid) => {
-        const arr = buckets[bid] || []
-        if (arr.length === 0) {
-          ratingMap[bid] = { avg: null, count: 0 }
-        } else {
-          const avg = Math.round((arr.reduce((s, n) => s + n, 0) / arr.length) * 10) / 10
-          ratingMap[bid] = { avg, count: arr.length }
-        }
-      })
-    } catch (e) {
-      console.warn('[my-order] bidder ratings query failed (ignored):', e)
+  const estimates = bids.map((b) => {
+    const biz: BusinessUserProfile = biddersMap[b.bidder_id] || {
+      id: b.bidder_id,
+      name: null,
+      businessname: null,
+      category: null,
+      region: null,
+      address: null,
+      bio: null,
+      avatar_url: null,
+      businessnumber: null,
+      jobs_accepted_count: null,
+      serviceareas: null,
+      specialties: null,
     }
-  }
-
-  const estimates = bids.map(b => {
-    const biz = biddersMap[b.bidder_id] || ({} as UserRow)
     const rawBiz = (biz.businessname || '').trim()
     const rawName = (biz.name || '').trim()
     // 상호명 → 사장님 성함 → '사업자' 순으로 폴백 (익명 표시 방지)
     const businessName = rawBiz || rawName || '사업자'
-    const region = biz.address || (Array.isArray(biz.serviceareas) ? biz.serviceareas.join(', ') : '') || ''
+    const region = biz.region || biz.address || (Array.isArray(biz.serviceareas) ? biz.serviceareas.join(', ') : '') || ''
     const rating = ratingMap[b.bidder_id] || { avg: null, count: 0 }
     return {
       id: b.id,
@@ -146,13 +139,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const techId = order.technicianId || order.technicianid || selectedBidderId ||
     (bids.find(b => b.status === 'selected')?.bidder_id ?? null)
   if (techId) {
-    const { data: biz, error: bizErr } = await supabaseAdmin
-      .from('users')
-      .select('id, name, businessname, phonenumber, category, address, bio, avatar_url, businessnumber, jobs_accepted_count, serviceareas, specialties')
-      .eq('id', techId)
-      .maybeSingle()
-    if (bizErr) console.warn('[my-order] awarded biz query error:', bizErr)
-    awardedBusiness = biz || null
+    const bidders = await fetchBusinessUsersByIds([techId])
+    awardedBusiness = bidders[techId] || null
   }
 
   return NextResponse.json({
