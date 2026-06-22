@@ -19,7 +19,7 @@ export const CATEGORY_ICONS: Record<(typeof CATEGORIES)[number], string> = {
   '누수': '💧',
   '화장실': '🚿',
   '배관': '🔩',
-  '방수': '🧱',
+  '방수': '💧',
   '주방': '🍳',
   '리모델링': '🏠',
   '기타': '🛠️',
