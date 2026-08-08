@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import Script from 'next/script'
 import './globals.css'
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'
@@ -11,7 +10,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: '올수리 - 집수리 전문 견적 서비스',
     description: '무료로 여러 업체의 견적을 비교하세요',
-    url: 'https://allsuri.app',
+    url: 'https://allsuricommerce.netlify.app',
     siteName: '올수리',
     locale: 'ko_KR',
     type: 'website',
@@ -29,13 +28,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ko">
-      <body className="min-h-screen flex flex-col">
-        <Script
+      <head>
+        {/* AdSense 크롤러가 초기 HTML에서 바로 읽을 수 있도록 head에 직접 삽입 */}
+        <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8260409557475507"
           crossOrigin="anonymous"
-          strategy="afterInteractive"
         />
+      </head>
+      <body className="min-h-screen flex flex-col">
         <Header />
         <main className="flex-1">
           {children}
