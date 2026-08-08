@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Script from 'next/script'
 import './globals.css'
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'
@@ -17,6 +18,7 @@ export const metadata: Metadata = {
   },
   other: {
     'naver-site-verification': '3d6603043a98df369e669973ff157eeaffa91877',
+    'google-adsense-account': 'ca-pub-8260409557475507',
   },
 }
 
@@ -28,6 +30,12 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body className="min-h-screen flex flex-col">
+        <Script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8260409557475507"
+          crossOrigin="anonymous"
+          strategy="afterInteractive"
+        />
         <Header />
         <main className="flex-1">
           {children}
