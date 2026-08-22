@@ -1,8 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { resolvePersonName } from '@/lib/business-profile'
+
+function formatPhoneInput(raw: string): string {
+  const d = raw.replace(/[^0-9]/g, '')
+  if (d.length === 11) return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`
+  if (d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`
+  return d
+}
 
 // ── 타입 ────────────────────────────────────────────────────────────
 interface OrderSummary {
@@ -98,8 +106,10 @@ function Stepper({ order, estimates }: { order: OrderDetail['order']; estimates:
 
 // ── 메인 컴포넌트 ────────────────────────────────────────────────────
 export default function MyOrderClient() {
+  const searchParams = useSearchParams()
   const [screen, setScreen] = useState<'login' | 'list' | 'dashboard'>('login')
   const [phone, setPhone] = useState('')
+  const [phoneLocked, setPhoneLocked] = useState(false)
   const [pwd, setPwd] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -110,6 +120,15 @@ export default function MyOrderClient() {
   const [awardPending, setAwardPending] = useState<{ estimateId: string; businessId: string; bizName: string; isBid?: boolean } | null>(null)
   const [rating, setRating] = useState(0)
   const [ratingComment, setRatingComment] = useState('')
+
+  useEffect(() => {
+    const raw = searchParams.get('phone') || ''
+    const formatted = formatPhoneInput(raw)
+    if (!formatted) return
+    setPhone(formatted)
+    setPhoneLocked(true)
+    requestAnimationFrame(() => document.getElementById('pwdInput')?.focus())
+  }, [searchParams])
 
   // ── 로그인 ──────────────────────────────────────────────────────────
   async function doLogin() {
@@ -249,16 +268,22 @@ export default function MyOrderClient() {
           <>
             <div className="text-center mb-8">
               <h1 className="text-2xl font-bold text-gray-900">내 견적 현황 조회</h1>
-              <p className="text-gray-500 mt-2 text-sm">견적 요청 시 입력한 전화번호와<br />4자리 비밀번호로 확인하세요</p>
+              <p className="text-gray-500 mt-2 text-sm">
+                {phoneLocked
+                  ? <>비밀번호 4자리만 입력하면 조회할 수 있습니다</>
+                  : <>견적 요청 시 입력한 전화번호와<br />4자리 비밀번호로 확인하세요</>}
+              </p>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">전화번호</label>
                 <input
-                  type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+                  type="tel" value={phone}
+                  readOnly={phoneLocked}
+                  onChange={e => { if (!phoneLocked) setPhone(e.target.value) }}
                   onKeyDown={e => e.key === 'Enter' && document.getElementById('pwdInput')?.focus()}
                   placeholder="010-0000-0000"
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${phoneLocked ? 'bg-gray-50 text-gray-700' : ''}`}
                 />
               </div>
               <div>

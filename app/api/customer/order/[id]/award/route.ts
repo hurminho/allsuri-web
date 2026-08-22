@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin, normalizePhone } from '@/lib/supabase-server'
+import { customerOrderUrl, formatPhoneDisplay, sendSms, smsBidAwarded } from '@/lib/solapi-sms'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: orderId } = await params
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // 사업자 정보
   const { data: biz } = await supabaseAdmin
-    .from('users').select('id, name, businessname').eq('id', businessId).single()
+    .from('users').select('id, name, businessname, phonenumber').eq('id', businessId).single()
   const bizName = biz?.businessname || biz?.name || '사업자'
   const customerPhone = order.customerPhone || order.customerphone || ''
   const customerName = order.customerName || order.customername || '고객'
@@ -151,6 +152,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     } catch (e) {
       console.warn('[award] 거절 알림 전송 실패 (무시):', e)
     }
+  }
+
+  try {
+    const bizPhone = formatPhoneDisplay(String(biz?.phonenumber || ''))
+    await sendSms(
+      String(customerPhone),
+      smsBidAwarded({
+        orderTitle: order.title || '견적 요청',
+        businessName: bizName,
+        phoneLabel: bizPhone || '웹에서 확인',
+        link: customerOrderUrl(String(customerPhone)),
+      })
+    )
+  } catch (e) {
+    console.warn('[award] 고객 문자 발송 실패 (무시):', e)
   }
 
   return NextResponse.json({ success: true, jobId, message: `${bizName}에게 낙찰되었습니다.` })
