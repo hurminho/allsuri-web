@@ -22,10 +22,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }).eq('id', orderId)
 
   if (businessId) {
-    await supabaseAdmin.from('business_reviews').insert({
-      business_id: businessId, order_id: orderId, rating,
-      comment: comment || '', is_admin_review: false, created_at: now,
-    })
+    // 평점은 order_reviews 로 통합 저장한다 (앱 B2B 평점과 같은 원천).
+    // order_id 유니크 인덱스 덕분에 중복 평가는 갱신으로 처리된다.
+    const { error: reviewError } = await supabaseAdmin
+      .from('order_reviews')
+      .upsert(
+        {
+          reviewee_id: businessId, order_id: orderId, rating,
+          comment: comment || '', is_admin_review: false,
+          created_at: now, updated_at: now,
+        },
+        { onConflict: 'order_id' },
+      )
+    if (reviewError) {
+      console.warn('[rate] order_reviews 저장 실패:', reviewError.message)
+    }
     await supabaseAdmin.from('notifications').insert({
       userid: businessId, title: '⭐ 새로운 평점이 등록되었습니다',
       body: `고객이 ${rating}점을 남겼습니다.`, type: 'new_review',
