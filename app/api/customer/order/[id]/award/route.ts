@@ -156,7 +156,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   try {
     const bizPhone = formatPhoneDisplay(String(biz?.phonenumber || ''))
-    await sendSms(
+    const smsResult = await sendSms(
       String(customerPhone),
       smsBidAwarded({
         orderTitle: order.title || '견적 요청',
@@ -165,6 +165,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         link: customerOrderUrl(String(customerPhone)),
       })
     )
+    if (!smsResult.ok) {
+      console.warn('[award] 고객 문자 미발송:', smsResult.error)
+    }
   } catch (e) {
     console.warn('[award] 고객 문자 발송 실패 (무시):', e)
   }
