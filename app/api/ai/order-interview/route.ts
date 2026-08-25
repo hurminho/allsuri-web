@@ -6,6 +6,7 @@ import {
   parseInterviewResult,
   type InterviewAnswer,
 } from '@/lib/ai-order'
+import { openaiConfig } from '@/lib/openai-config'
 
 export const runtime = 'nodejs'
 
@@ -28,9 +29,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '한 줄 설명은 5~500자로 입력해 주세요.' }, { status: 400 })
   }
 
-  const openaiKey = process.env.OPENAI_API_KEY || ''
-  const model = process.env.OPENAI_ORDER_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini'
-  if (!openaiKey) {
+  const { apiKey: openaiKey, model, configured } = openaiConfig()
+  if (!configured) {
     console.warn('[ai-order] OPENAI_API_KEY missing', { session_id: sessionId })
     return NextResponse.json({ error: 'ai_unavailable' }, { status: 503 })
   }
