@@ -4,8 +4,15 @@ import {
   SYSTEM_PROMPT,
   buildUserPrompt,
   parseInterviewResult,
+  composeLocalFinalOrder,
   type InterviewAnswer,
+  type InterviewResult,
 } from '@/lib/ai-order'
+import {
+  inferCategory,
+  nextScriptQuestion,
+  shouldFinalizeInterview,
+} from '@/lib/ai-interview-script'
 import { openaiConfig } from '@/lib/openai-config'
 
 export const runtime = 'nodejs'
@@ -29,10 +36,45 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '한 줄 설명은 5~500자로 입력해 주세요.' }, { status: 400 })
   }
 
+  const category = inferCategory(initialText)
+
+  if (!shouldFinalizeInterview(initialText, answers)) {
+    const nextQuestion = nextScriptQuestion(initialText, answers)
+    const analysis: InterviewResult = {
+      readyToFinalize: false,
+      summary: initialText,
+      categoryCandidates: [{ category, confidence: 0.7 }],
+      knownFacts: answers.map((a) => `${a.question} ${a.answer}`),
+      missingInformation: nextQuestion ? [nextQuestion.question] : [],
+      nextQuestion: nextQuestion || undefined,
+    }
+    void persistSession(sessionId, initialText, answers, analysis)
+    console.log('[ai-order]', {
+      session_id: sessionId,
+      latency: Date.now() - started,
+      question_count: answers.length,
+      ready_to_finalize: false,
+      source: 'script',
+    })
+    return NextResponse.json({
+      sessionId,
+      readyToFinalize: false,
+      analysis,
+      nextQuestion: nextQuestion || null,
+    })
+  }
+
+  const fallback = composeLocalFinalOrder(initialText, answers, category)
   const { apiKey: openaiKey, model, configured } = openaiConfig()
   if (!configured) {
-    console.warn('[ai-order] OPENAI_API_KEY missing', { session_id: sessionId })
-    return NextResponse.json({ error: 'ai_unavailable' }, { status: 503 })
+    return finalizeResponse(sessionId, initialText, started, answers, {
+      readyToFinalize: true,
+      summary: fallback.title,
+      categoryCandidates: [{ category, confidence: 0.5 }],
+      knownFacts: answers.map((a) => a.answer),
+      missingInformation: fallback.unknownItems,
+      finalOrder: fallback,
+    }, 'local_no_key')
   }
 
   const userPrompt = buildUserPrompt({
@@ -40,11 +82,6 @@ export async function POST(req: NextRequest) {
     answers: answers.slice(0, 5),
     photoNotes: photoUrls.length ? `사진 ${photoUrls.length}장 첨부됨` : undefined,
   })
-
-  const content: Array<Record<string, unknown>> = [{ type: 'text', text: userPrompt }]
-  for (const url of photoUrls.slice(0, 3)) {
-    content.push({ type: 'image_url', image_url: { url } })
-  }
 
   try {
     const resp = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -55,12 +92,12 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model,
-        temperature: 0.2,
-        max_tokens: 700,
+        temperature: 0.3,
+        max_tokens: 900,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: photoUrls.length ? content : userPrompt },
+          { role: 'user', content: userPrompt },
         ],
       }),
     })
@@ -71,39 +108,73 @@ export async function POST(req: NextRequest) {
         model,
         status: resp.status,
         latency: Date.now() - started,
+        detail: detail.slice(0, 200),
       })
-      return NextResponse.json({ error: 'ai_unavailable', detail: detail.slice(0, 200) }, { status: 502 })
+      return finalizeResponse(sessionId, initialText, started, answers, {
+        readyToFinalize: true,
+        summary: fallback.title,
+        categoryCandidates: [{ category, confidence: 0.5 }],
+        knownFacts: answers.map((a) => a.answer),
+        missingInformation: fallback.unknownItems,
+        finalOrder: fallback,
+      }, 'local_openai_error')
     }
     const json = await resp.json() as { choices?: { message?: { content?: string } }[] }
     const rawText = json.choices?.[0]?.message?.content || '{}'
     let parsed: unknown = {}
     try { parsed = JSON.parse(rawText) } catch { parsed = {} }
-    const analysis = parseInterviewResult(parsed)
-    if (answers.length >= 5 && !analysis.readyToFinalize) {
-      analysis.readyToFinalize = true
+    const analysis = parseInterviewResult({ ...(parsed as object), readyToFinalize: true })
+    const aiDesc = analysis.finalOrder?.description?.trim() || ''
+    const tooThin = !aiDesc || aiDesc === initialText.trim() || aiDesc.length < Math.max(80, initialText.length + 50)
+    if (tooThin) {
+      analysis.finalOrder = {
+        ...fallback,
+        ...analysis.finalOrder,
+        description: fallback.description,
+        contractorCheckpoints: analysis.finalOrder?.contractorCheckpoints?.length
+          ? analysis.finalOrder.contractorCheckpoints
+          : fallback.contractorCheckpoints,
+      }
     }
-
-    await persistSession(sessionId, initialText, answers, analysis).catch(() => {})
-
-    console.log('[ai-order]', {
-      session_id: sessionId,
-      model,
-      latency: Date.now() - started,
-      question_count: answers.length,
-      ready_to_finalize: analysis.readyToFinalize,
-    })
-
-    return NextResponse.json({
-      sessionId,
-      readyToFinalize: analysis.readyToFinalize,
-      analysis,
-      nextQuestion: analysis.nextQuestion || null,
-    })
+    analysis.readyToFinalize = true
+    analysis.finalOrder = analysis.finalOrder || fallback
+    return finalizeResponse(sessionId, initialText, started, answers, analysis, model)
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     console.warn('[ai-order] exception', { session_id: sessionId, error: msg, latency: Date.now() - started })
-    return NextResponse.json({ error: 'ai_unavailable' }, { status: 502 })
+    return finalizeResponse(sessionId, initialText, started, answers, {
+      readyToFinalize: true,
+      summary: fallback.title,
+      categoryCandidates: [{ category, confidence: 0.5 }],
+      knownFacts: answers.map((a) => a.answer),
+      missingInformation: fallback.unknownItems,
+      finalOrder: fallback,
+    }, 'local_exception')
   }
+}
+
+function finalizeResponse(
+  sessionId: string,
+  initialText: string,
+  started: number,
+  answers: InterviewAnswer[],
+  analysis: InterviewResult,
+  source: string,
+) {
+  void persistSession(sessionId, initialText, answers, analysis)
+  console.log('[ai-order]', {
+    session_id: sessionId,
+    latency: Date.now() - started,
+    question_count: answers.length,
+    ready_to_finalize: true,
+    source,
+  })
+  return NextResponse.json({
+    sessionId,
+    readyToFinalize: true,
+    analysis,
+    nextQuestion: null,
+  })
 }
 
 async function persistSession(

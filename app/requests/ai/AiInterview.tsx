@@ -35,7 +35,11 @@ export default function AiInterview() {
   const [pin, setPin] = useState('')
   const [submittedId, setSubmittedId] = useState('')
 
-  const progress = useMemo(() => Math.min(answers.length / 4, 0.95), [answers.length])
+  const wrappingUp = loading && answers.length >= 3
+  const progress = useMemo(
+    () => (phase === 'confirm' ? 1 : Math.min((answers.length + (phase === 'question' ? 1 : 0)) / 4, 0.9)),
+    [answers.length, phase],
+  )
 
   async function callAi(nextAnswers: InterviewAnswer[]) {
     setLoading(true)
@@ -63,9 +67,13 @@ export default function AiInterview() {
         setCategory(fo.category || '기타')
         setSubcategory(fo.subcategory || '')
         setDescription(
-          [fo.description, fo.workLocation ? `현장: ${fo.workLocation}` : '', fo.contractorCheckpoints?.length ? `사업자 확인: ${fo.contractorCheckpoints.join(', ')}` : '']
-            .filter(Boolean)
-            .join('\n'),
+          fo.description.includes('[방문 시') || fo.description.includes('[확인된 내용]')
+            ? fo.description
+            : [
+                fo.description,
+                fo.workLocation ? `현장: ${fo.workLocation}` : '',
+                fo.contractorCheckpoints?.length ? `사업자 확인: ${fo.contractorCheckpoints.join(', ')}` : '',
+              ].filter(Boolean).join('\n'),
         )
         setPhase('confirm')
         track('ai_order_ready', { sessionId })
@@ -168,7 +176,9 @@ export default function AiInterview() {
           <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
             <div className="h-full bg-blue-600 transition-all" style={{ width: `${phase === 'confirm' ? 100 : Math.max(8, progress * 100)}%` }} />
           </div>
-          <p className="text-xs text-gray-400 mt-2">AI가 현장 내용을 확인하고 있어요</p>
+          <p className="text-xs text-gray-400 mt-2">
+            {wrappingUp ? '답변을 바탕으로 현장 상황을 정리하고 있어요' : '필요한 내용만 이어서 확인해요'}
+          </p>
         </div>
       )}
 
@@ -191,14 +201,15 @@ export default function AiInterview() {
             onClick={start}
             className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl disabled:opacity-60"
           >
-            {loading ? '분석 중...' : 'AI에게 알려주기'}
+            {loading ? (wrappingUp ? '현장 상황 정리 중...' : '다음 질문으로...') : 'AI에게 알려주기'}
           </button>
         </>
       )}
 
       {phase === 'question' && question && (
         <>
-          <h2 className="text-xl font-bold text-gray-900 mb-4">{question.question}</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">{question.question}</h2>
+          <p className="text-xs text-gray-400 mb-4">선택만 하시면 됩니다. 모르면 “잘 모르겠어요”를 눌러 주세요.</p>
           <div className="grid gap-2">
             {(question.options && question.options.length > 0
               ? question.options
