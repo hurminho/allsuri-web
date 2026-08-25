@@ -20,10 +20,10 @@ export default function Header() {
           <Link href="/requests" className="hover:text-blue-600 transition-colors">견적 요청</Link>
           <Link href="/my-order" className="hover:text-blue-600 transition-colors font-semibold">내 견적</Link>
           <Link
-            href="/requests"
+            href="/requests/ai"
             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
           >
-            무료 견적 받기
+            한 줄 견적 요청 AI
           </Link>
         </nav>
 
@@ -51,11 +51,11 @@ export default function Header() {
           <Link href="/requests" className="py-2 hover:text-blue-600" onClick={() => setMenuOpen(false)}>견적 요청</Link>
           <Link href="/my-order" className="py-2 text-blue-600 font-semibold hover:text-blue-700" onClick={() => setMenuOpen(false)}>내 견적</Link>
           <Link
-            href="/requests"
+            href="/requests/ai"
             className="bg-blue-600 text-white text-center py-2 rounded-lg hover:bg-blue-700"
             onClick={() => setMenuOpen(false)}
           >
-            무료 견적 받기
+            한 줄 견적 요청 AI
           </Link>
         </div>
       )}

@@ -126,12 +126,13 @@ export default async function Home() {
             직접 견적서를 보내드립니다
           </p>
           <Link
-            href="/requests"
+            href="/requests/ai"
             className="inline-block bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-bold text-lg px-8 py-4 rounded-xl shadow-lg transition-all hover:scale-105"
           >
-            무료 견적 요청하기 →
+            한 줄 견적 요청 AI →
           </Link>
-          <p className="mt-4 text-blue-200 text-sm">평균 응답시간 2시간 이내 · 완전 무료</p>
+          <p className="mt-3 text-blue-100 text-sm">무슨 공사인지 몰라도 괜찮아요. 상황을 한 줄로 알려주세요.</p>
+          <p className="mt-4 text-blue-200 text-sm">평균 응답시간 2시간 이내 · 완전 무료 · <Link href="/requests?mode=manual" className="underline">직접 입력하기</Link></p>
         </div>
       </section>
 
@@ -171,10 +172,10 @@ export default async function Home() {
           </div>
           <div className="text-center mt-8">
             <Link
-              href="/requests"
+              href="/requests/ai"
               className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3 rounded-xl transition-colors"
             >
-              지금 바로 시작하기
+              한 줄 견적 요청 AI
             </Link>
           </div>
         </div>
@@ -304,10 +305,10 @@ export default async function Home() {
           <h2 className="text-2xl md:text-3xl font-bold mb-3">지금 바로 무료 견적을 받아보세요</h2>
           <p className="text-gray-400 mb-8">앱 설치 · 회원가입 불필요. 3분이면 충분합니다.</p>
           <Link
-            href="/requests"
+            href="/requests/ai"
             className="inline-block bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-bold text-lg px-10 py-4 rounded-xl transition-all hover:scale-105"
           >
-            무료 견적 요청하기 →
+            한 줄 견적 요청 AI →
           </Link>
         </div>
       </section>

@@ -69,8 +69,18 @@ export default async function RequestsPage() {
       <div className="max-w-2xl mx-auto px-4 py-10">
         {/* Page Header */}
         <div className="text-center mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">무료 견적 요청</h1>
-          <p className="text-gray-500 mt-2">앱 설치·회원가입 없이 바로 요청하세요</p>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">견적 요청</h1>
+          <p className="text-gray-500 mt-2">AI로 한 줄만 알려주시거나, 직접 입력할 수 있습니다</p>
+          <div className="grid sm:grid-cols-2 gap-3 mt-6 text-left">
+            <Link href="/requests/ai" className="rounded-2xl border border-blue-200 bg-blue-50 p-4 hover:border-blue-400">
+              <p className="font-bold text-blue-700">AI로 간편 요청하기</p>
+              <p className="text-sm text-gray-600 mt-1">무슨 공사인지 몰라도 괜찮아요. 상황을 한 줄로 알려주세요.</p>
+            </Link>
+            <Link href="/requests?mode=manual" className="rounded-2xl border border-gray-200 bg-white p-4 hover:border-blue-400">
+              <p className="font-bold text-gray-900">직접 입력하기</p>
+              <p className="text-sm text-gray-600 mt-1">공종과 내용을 직접 작성해 요청합니다.</p>
+            </Link>
+          </div>
         </div>
 
         {/* 추천 업체 (관리자 지정 시 표시) */}
