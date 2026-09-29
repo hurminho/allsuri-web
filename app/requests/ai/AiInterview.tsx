@@ -1,11 +1,42 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { supabase, CATEGORIES } from '@/lib/supabase'
 import type { FinalOrderDraft, InterviewAnswer, NextQuestion } from '@/lib/ai-order'
+import type { StructuredIntake } from '@/lib/ai-structure'
+import type {
+  PriceEnums,
+  PriceEstimateResponse,
+  PriceQuestion,
+  TradeSummary,
+} from '@/lib/price-engine'
+import PriceEstimateCard from '@/components/PriceEstimateCard'
 
 type Phase = 'input' | 'question' | 'confirm' | 'done' | 'fallback'
+
+type CatalogPayload = {
+  trades: TradeSummary[]
+  questions: PriceQuestion[]
+  enums: PriceEnums
+}
+
+// 가격 엔진이 카탈로그를 못 줄 때만 쓰는 한국어 기본 라벨.
+const URGENCY_FALLBACK_LABELS: Record<string, string> = {
+  emergency: '지금 당장(긴급)',
+  today: '오늘 안에',
+  soon: '2~3일 안',
+  normal: '급하지 않아요',
+}
+const PROPERTY_FALLBACK_LABELS: Record<string, string> = {
+  apartment: '아파트',
+  villa: '빌라·다세대',
+  house: '단독주택',
+  officetel: '오피스텔',
+  commercial: '상가·매장',
+  office: '사무실',
+  other: '그 외',
+}
 
 function track(event: string, extra?: Record<string, unknown>) {
   console.log('[ai_order_event]', event, extra || {})
@@ -35,11 +66,54 @@ export default function AiInterview() {
   const [pin, setPin] = useState('')
   const [submittedId, setSubmittedId] = useState('')
 
+  // 가격 엔진 관련 상태 (금액은 전부 서버에서 옵니다)
+  const [catalog, setCatalog] = useState<CatalogPayload | null>(null)
+  const [structured, setStructured] = useState<StructuredIntake | null>(null)
+  const [price, setPrice] = useState<PriceEstimateResponse | null>(null)
+  const [priceLoading, setPriceLoading] = useState(false)
+  const [tradeId, setTradeId] = useState('')
+  const [urgency, setUrgency] = useState('')
+  const [propertyType, setPropertyType] = useState('')
+  const [extraAnswers, setExtraAnswers] = useState<Record<string, string>>({})
+  const skipNextEstimate = useRef(true)
+  const estimateSeq = useRef(0)
+
   const wrappingUp = loading && answers.length >= 3
   const progress = useMemo(
     () => (phase === 'confirm' ? 1 : Math.min((answers.length + (phase === 'question' ? 1 : 0)) / 4, 0.9)),
     [answers.length, phase],
   )
+
+  const categoryOptions = useMemo(() => {
+    const fromCatalog = (catalog?.trades || []).map((t) => t.category)
+    return Array.from(new Set([...CATEGORIES, ...fromCatalog]))
+  }, [catalog])
+
+  const tradesForCategory = useMemo(
+    () => (catalog?.trades || []).filter((t) => t.category === category),
+    [catalog, category],
+  )
+
+  const urgencyOptions = useMemo(
+    () => enumOptions(catalog, 'urgency', URGENCY_FALLBACK_LABELS),
+    [catalog],
+  )
+  const propertyOptions = useMemo(
+    () => enumOptions(catalog, 'propertyType', PROPERTY_FALLBACK_LABELS),
+    [catalog],
+  )
+
+  // 최대 3개까지만 추가 질문을 노출합니다.
+  const extraQuestions: PriceQuestion[] = useMemo(() => {
+    const fromEngine = (price?.missingRequiredQuestions || []).slice(0, 3)
+    if (fromEngine.length > 0) return fromEngine
+    return (structured?.suggestedQuestions || []).slice(0, 3).map((q, i) => ({
+      id: `ai_q${i + 1}`,
+      label: q,
+      inputType: 'text' as const,
+      options: [],
+    }))
+  }, [price, structured])
 
   async function callAi(nextAnswers: InterviewAnswer[]) {
     setLoading(true)
@@ -53,6 +127,7 @@ export default function AiInterview() {
           initialText: text.trim(),
           answers: nextAnswers,
           photoUrls,
+          address: address.trim() || undefined,
         }),
       })
       const json = await res.json()
@@ -62,10 +137,11 @@ export default function AiInterview() {
       }
       if (json.readyToFinalize && json.analysis?.finalOrder) {
         const fo = json.analysis.finalOrder as FinalOrderDraft
+        const st = (json.structured || null) as StructuredIntake | null
         setDraft(fo)
         setTitle(fo.title)
-        setCategory(fo.category || '기타')
-        setSubcategory(fo.subcategory || '')
+        setCategory(st?.category || fo.category || '기타')
+        setSubcategory(st?.subcategory || fo.subcategory || '')
         setDescription(
           fo.description.includes('[방문 시') || fo.description.includes('[확인된 내용]')
             ? fo.description
@@ -75,8 +151,15 @@ export default function AiInterview() {
                 fo.contractorCheckpoints?.length ? `사업자 확인: ${fo.contractorCheckpoints.join(', ')}` : '',
               ].filter(Boolean).join('\n'),
         )
+        setStructured(st)
+        setCatalog((json.catalog || null) as CatalogPayload | null)
+        setPrice((json.price || null) as PriceEstimateResponse | null)
+        setTradeId(st?.tradeId || '')
+        setUrgency(fo.urgency === 'high' ? 'today' : 'normal')
+        // 서버가 이미 계산해 준 값을 그대로 쓰고, 고객이 수정할 때부터 다시 계산합니다.
+        skipNextEstimate.current = true
         setPhase('confirm')
-        track('ai_order_ready', { sessionId })
+        track('ai_order_ready', { sessionId, priceState: json.price?.priceState || null })
         return
       }
       if (json.nextQuestion) {
@@ -90,6 +173,56 @@ export default function AiInterview() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // 공정·긴급도·건물 유형·추가 답변이 바뀌면 500ms 뒤 다시 계산합니다.
+  useEffect(() => {
+    if (phase !== 'confirm') return
+    if (skipNextEstimate.current) {
+      skipNextEstimate.current = false
+      return
+    }
+    const seq = ++estimateSeq.current
+    setPriceLoading(true)
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/price/estimate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId,
+            tradeId: tradeId || undefined,
+            category,
+            subcategory: subcategory || undefined,
+            text: [text.trim(), description].filter(Boolean).join('\n').slice(0, 2000),
+            address: address.trim() || undefined,
+            urgency: urgency || undefined,
+            propertyType: propertyType || undefined,
+            answers: extraAnswers,
+          }),
+        })
+        const json = await res.json()
+        if (seq !== estimateSeq.current) return
+        setPrice((json?.price || null) as PriceEstimateResponse | null)
+      } catch {
+        if (seq === estimateSeq.current) setPrice(null)
+      } finally {
+        if (seq === estimateSeq.current) setPriceLoading(false)
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+    // description/text 는 값이 바뀌어도 재계산 트리거로 쓰지 않습니다(입력 중 과다 호출 방지).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, tradeId, category, subcategory, urgency, propertyType, address, extraAnswers, sessionId])
+
+  function selectTrade(id: string) {
+    const trade = (catalog?.trades || []).find((t) => t.id === id)
+    setTradeId(id)
+    if (trade) {
+      setCategory(trade.category)
+      setSubcategory(trade.subcategory)
+    }
+    track('ai_order_trade_selected', { sessionId, tradeId: id })
   }
 
   async function start() {
@@ -150,6 +283,23 @@ export default function AiInterview() {
           customerEmail: null,
           pin,
           imageUrls: photoUrls,
+          // 구조화 정보 (AI 는 분류·요약만, 금액은 관여하지 않습니다)
+          tradeId: tradeId || price?.trade?.id || null,
+          subcategory: subcategory.trim() || null,
+          symptomTags: structured?.symptomTags || [],
+          propertyType: propertyType || null,
+          urgency: urgency || null,
+          aiSummary: draft?.title || null,
+          aiMissingFields: structured?.missingFields || [],
+          aiConfidence: structured?.confidence ?? draft?.confidence ?? null,
+          // 가격 스냅샷 (전부 가격 엔진 값)
+          priceEngineVersion: price?.engineVersion || null,
+          priceState: price?.priceState || null,
+          estimatedMin: price?.estimatedMin ?? null,
+          estimatedMax: price?.estimatedMax ?? null,
+          priceConfidenceLevel: price?.confidenceLevel || null,
+          priceEvidenceCount: price?.evidenceCount ?? null,
+          priceFactors: price?.factors || [],
         }),
       })
       const json = await res.json()
@@ -240,14 +390,87 @@ export default function AiInterview() {
         <>
           <h2 className="text-xl font-bold text-gray-900 mb-1">요청 내용을 확인해 주세요</h2>
           <p className="text-sm text-gray-500 mb-5">AI 초안입니다. 원하시면 수정한 뒤 기존 견적 요청으로 등록됩니다.</p>
+
+          <div className="mb-5">
+            <PriceEstimateCard price={price} loading={priceLoading} onSelectTrade={selectTrade} />
+          </div>
+
           <label className="block text-sm font-semibold mb-1">요청 제목</label>
           <input value={title} onChange={(e) => { setTitle(e.target.value); track('ai_order_edited') }} className="w-full border rounded-xl px-3 py-2 mb-3" />
           <label className="block text-sm font-semibold mb-1">공종</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full border rounded-xl px-3 py-2 mb-3">
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          <select
+            value={category}
+            onChange={(e) => { setCategory(e.target.value); setTradeId(''); }}
+            className="w-full border rounded-xl px-3 py-2 mb-3"
+          >
+            {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <label className="block text-sm font-semibold mb-1">세부 공종</label>
-          <input value={subcategory} onChange={(e) => setSubcategory(e.target.value)} className="w-full border rounded-xl px-3 py-2 mb-3" />
+          {tradesForCategory.length > 0 ? (
+            <select
+              value={tradeId}
+              onChange={(e) => {
+                if (e.target.value) selectTrade(e.target.value)
+                else setTradeId('')
+              }}
+              className="w-full border rounded-xl px-3 py-2 mb-3"
+            >
+              <option value="">직접 입력할게요</option>
+              {tradesForCategory.map((t) => (
+                <option key={t.id} value={t.id}>{t.subcategory}</option>
+              ))}
+            </select>
+          ) : null}
+          {(tradesForCategory.length === 0 || !tradeId) && (
+            <input
+              value={subcategory}
+              onChange={(e) => setSubcategory(e.target.value)}
+              placeholder="예: 변기 막힘"
+              className="w-full border rounded-xl px-3 py-2 mb-3"
+            />
+          )}
+
+          <label className="block text-sm font-semibold mb-1">긴급 여부</label>
+          <select value={urgency} onChange={(e) => setUrgency(e.target.value)} className="w-full border rounded-xl px-3 py-2 mb-3">
+            <option value="">선택 안 함</option>
+            {urgencyOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+
+          <label className="block text-sm font-semibold mb-1">주택/상가 유형</label>
+          <select value={propertyType} onChange={(e) => setPropertyType(e.target.value)} className="w-full border rounded-xl px-3 py-2 mb-3">
+            <option value="">선택 안 함</option>
+            {propertyOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+
+          {extraQuestions.length > 0 && (
+            <div className="mb-4 rounded-xl border border-gray-200 p-3">
+              <p className="text-sm font-semibold text-gray-800 mb-1">몇 가지만 더 알려주시면 범위가 좁혀져요</p>
+              <p className="text-xs text-gray-400 mb-3">답하지 않으셔도 견적 요청은 가능합니다.</p>
+              {extraQuestions.map((q) => (
+                <div key={q.id} className="mb-3 last:mb-0">
+                  <label className="block text-sm text-gray-700 mb-1">{q.label}</label>
+                  {q.options && q.options.length > 0 ? (
+                    <select
+                      value={extraAnswers[q.id] || ''}
+                      onChange={(e) => setExtraAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                      className="w-full border rounded-xl px-3 py-2"
+                    >
+                      <option value="">선택 안 함</option>
+                      {q.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      value={extraAnswers[q.id] || ''}
+                      onChange={(e) => setExtraAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                      className="w-full border rounded-xl px-3 py-2"
+                      placeholder="간단히 적어 주세요"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           <label className="block text-sm font-semibold mb-1">현장 상황</label>
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} className="w-full border rounded-xl px-3 py-2 mb-3" />
           {draft.contractorCheckpoints.length > 0 && (
@@ -304,6 +527,22 @@ export default function AiInterview() {
       <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => addPhotos(e.target.files)} />
     </div>
   )
+}
+
+/** 카탈로그 enums + questions 라벨로 select 옵션을 만듭니다. 카탈로그가 없으면 기본 라벨. */
+function enumOptions(
+  catalog: CatalogPayload | null,
+  mapsTo: 'urgency' | 'propertyType',
+  fallbackLabels: Record<string, string>,
+): { value: string; label: string }[] {
+  const values =
+    (mapsTo === 'urgency' ? catalog?.enums?.urgency : catalog?.enums?.propertyType) ||
+    Object.keys(fallbackLabels)
+  const question = (catalog?.questions || []).find((q) => q.mapsTo === mapsTo)
+  return values.map((value) => {
+    const fromCatalog = question?.options?.find((o) => o.value === value)?.label
+    return { value, label: fromCatalog || fallbackLabels[value] || value }
+  })
 }
 
 function ShortAnswer({ disabled, onSubmit }: { disabled: boolean; onSubmit: (v: string) => void }) {

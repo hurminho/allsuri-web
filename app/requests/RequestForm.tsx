@@ -1,10 +1,29 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase, CATEGORIES, CATEGORY_ICONS, isCategory } from '@/lib/supabase'
+import type { PriceEstimateResponse } from '@/lib/price-engine'
+import PriceEstimateCard from '@/components/PriceEstimateCard'
 
 type Step = 1 | 2 | 3
+
+// 가격 엔진 enum 과 같은 값. 라벨만 한국어로 붙입니다(금액과 무관).
+const URGENCY_OPTIONS = [
+  { value: 'emergency', label: '지금 당장(긴급)' },
+  { value: 'today', label: '오늘 안에' },
+  { value: 'soon', label: '2~3일 안' },
+  { value: 'normal', label: '급하지 않아요' },
+]
+const PROPERTY_OPTIONS = [
+  { value: 'apartment', label: '아파트' },
+  { value: 'villa', label: '빌라·다세대' },
+  { value: 'house', label: '단독주택' },
+  { value: 'officetel', label: '오피스텔' },
+  { value: 'commercial', label: '상가·매장' },
+  { value: 'office', label: '사무실' },
+  { value: 'other', label: '그 외' },
+]
 
 interface FormData {
   category: string
@@ -17,6 +36,8 @@ interface FormData {
   phone: string
   email: string
   pin: string
+  urgency: string
+  propertyType: string
   images: File[]
   imagePreviewUrls: string[]
 }
@@ -64,7 +85,14 @@ export default function RequestForm() {
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
+  const [uploadWarning, setUploadWarning] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 가격은 전부 가격 엔진(/api/price/estimate)에서 옵니다. 이 화면은 표시만 합니다.
+  const [price, setPrice] = useState<PriceEstimateResponse | null>(null)
+  const [priceLoading, setPriceLoading] = useState(false)
+  const [tradeId, setTradeId] = useState('')
+  const estimateSeq = useRef(0)
 
   const [form, setForm] = useState<FormData>({
     category: isCategory(initialCategory) ? initialCategory : '기타',
@@ -77,6 +105,8 @@ export default function RequestForm() {
     phone: '',
     email: '',
     pin: '',
+    urgency: '',
+    propertyType: '',
     images: [],
     imagePreviewUrls: [],
   })
@@ -84,6 +114,47 @@ export default function RequestForm() {
   function update<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
+
+  // 3단계에서만, 공종이 정해져 있을 때 500ms 디바운스로 예상 범위를 조회합니다.
+  // 실패해도 제출을 막지 않습니다.
+  useEffect(() => {
+    if (step !== 3 || !form.category) return
+    const seq = ++estimateSeq.current
+    setPriceLoading(true)
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/price/estimate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tradeId: tradeId || undefined,
+            category: form.category,
+            text: [form.title, form.description].filter(Boolean).join('\n').slice(0, 2000),
+            address: form.address || undefined,
+            urgency: form.urgency || undefined,
+            propertyType: form.propertyType || undefined,
+          }),
+        })
+        const json = await res.json()
+        if (seq !== estimateSeq.current) return
+        setPrice((json?.price || null) as PriceEstimateResponse | null)
+      } catch {
+        if (seq === estimateSeq.current) setPrice(null)
+      } finally {
+        if (seq === estimateSeq.current) setPriceLoading(false)
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [
+    step,
+    tradeId,
+    form.category,
+    form.title,
+    form.description,
+    form.address,
+    form.urgency,
+    form.propertyType,
+  ])
 
   function handleImageAdd(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || [])
@@ -136,31 +207,47 @@ export default function RequestForm() {
     setStep((s) => Math.min(s + 1, 3) as Step)
   }
 
-  async function uploadImages(): Promise<string[]> {
+  async function uploadImages(): Promise<{ urls: string[]; failed: number }> {
     const urls: string[] = []
+    let failed = 0
     for (const file of form.images) {
       const ext = file.name.split('.').pop() || 'jpg'
       const path = `web/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-      const { error: uploadError } = await supabase.storage
-        .from('attachments_estimates')
-        .upload(path, file, { upsert: true, contentType: file.type })
-      if (!uploadError) {
+      try {
+        const { error: uploadError } = await supabase.storage
+          .from('attachments_estimates')
+          .upload(path, file, { upsert: true, contentType: file.type })
+        if (uploadError) {
+          failed += 1
+          console.warn('[submit] 사진 업로드 실패:', uploadError.message)
+          continue
+        }
         const { data } = supabase.storage.from('attachments_estimates').getPublicUrl(path)
         urls.push(data.publicUrl)
+      } catch (e: unknown) {
+        failed += 1
+        console.warn('[submit] 사진 업로드 예외:', e instanceof Error ? e.message : String(e))
       }
     }
-    return urls
+    return { urls, failed }
   }
 
   async function handleSubmit() {
     const err = validateStep3()
     if (err) { setError(err); return }
     setError('')
+    setUploadWarning('')
     setLoading(true)
 
     try {
       // 1. 이미지 먼저 업로드 (클라이언트 측 Supabase Storage)
-      const imageUrls = form.images.length > 0 ? await uploadImages() : []
+      const upload = form.images.length > 0 ? await uploadImages() : { urls: [], failed: 0 }
+      const imageUrls = upload.urls
+      if (upload.failed > 0) {
+        setUploadWarning(
+          `사진 ${upload.failed}장을 올리지 못했습니다. 견적 요청은 그대로 접수되며, 필요하면 나중에 사업자에게 사진을 보내주세요.`,
+        )
+      }
 
       // 2. 서버 API 호출 → orders + marketplace_listings 동시 생성
       const res = await fetch('/api/customer/submit', {
@@ -178,6 +265,18 @@ export default function RequestForm() {
           customerEmail: form.email.trim() || null,
           pin: form.pin,
           imageUrls,
+          // 구조화 정보 + 가격 스냅샷 (금액은 전부 가격 엔진 값)
+          tradeId: tradeId || price?.trade?.id || null,
+          subcategory: price?.trade?.subcategory || null,
+          urgency: form.urgency || null,
+          propertyType: form.propertyType || null,
+          priceEngineVersion: price?.engineVersion || null,
+          priceState: price?.priceState || null,
+          estimatedMin: price?.estimatedMin ?? null,
+          estimatedMax: price?.estimatedMax ?? null,
+          priceConfidenceLevel: price?.confidenceLevel || null,
+          priceEvidenceCount: price?.evidenceCount ?? null,
+          priceFactors: price?.factors || [],
         }),
       })
 
@@ -207,6 +306,13 @@ export default function RequestForm() {
           견적서를 보내드릴 예정입니다.<br />
           평균 응답 시간은 <strong>2시간 이내</strong>입니다.
         </p>
+
+        {/* 사진 업로드가 일부 실패해도 접수는 완료됩니다. 숨기지 않고 알려줍니다. */}
+        {uploadWarning && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-700 rounded-xl p-4 mb-5 text-left text-sm">
+            {uploadWarning}
+          </div>
+        )}
 
         {/* 내 견적 조회 안내 */}
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 text-left">
@@ -241,8 +347,11 @@ export default function RequestForm() {
             setForm({
               category: '기타', title: '', description: '', address: '',
               addressDetail: '', visitDate: '', name: '', phone: '', email: '',
-              pin: '', images: [], imagePreviewUrls: [],
+              pin: '', urgency: '', propertyType: '', images: [], imagePreviewUrls: [],
             })
+            setPrice(null)
+            setTradeId('')
+            setUploadWarning('')
           }}
           className="text-blue-600 hover:underline text-sm"
         >
@@ -399,6 +508,40 @@ export default function RequestForm() {
             <p className="text-xs text-gray-400 mt-1">내일 이후 날짜를 선택해주세요</p>
           </div>
 
+          {/* 긴급 여부 / 건물 유형 (선택) — 예상 범위 정확도를 높이는 데만 쓰입니다 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                긴급 여부 <span className="text-gray-400 font-normal">(선택)</span>
+              </label>
+              <select
+                value={form.urgency}
+                onChange={(e) => update('urgency', e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">선택 안 함</option>
+                {URGENCY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                주택/상가 유형 <span className="text-gray-400 font-normal">(선택)</span>
+              </label>
+              <select
+                value={form.propertyType}
+                onChange={(e) => update('propertyType', e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">선택 안 함</option>
+                {PROPERTY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           {/* 입력 내용 요약 */}
           <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600 space-y-1">
             <div className="font-semibold text-gray-700 mb-2">입력 내용 확인</div>
@@ -486,6 +629,9 @@ export default function RequestForm() {
             <div>방문 희망일: {form.visitDate}</div>
             {form.images.length > 0 && <div>첨부 사진: {form.images.length}장</div>}
           </div>
+
+          {/* 예상 범위. 금액과 문구는 전부 가격 엔진 응답이며, 데이터가 부족하면 숫자를 감춥니다. */}
+          <PriceEstimateCard price={price} loading={priceLoading} onSelectTrade={setTradeId} />
         </div>
       )}
 
