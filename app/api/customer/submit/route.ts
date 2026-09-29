@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { splitAddressRegion } from '@/lib/address-region'
 
 // 고객 견적 폼 제출:
 // 1. orders 테이블에 저장 (B2C 고객 레코드)
@@ -84,6 +85,50 @@ async function sendWebOrderNotifications(
   }
 }
 
+// ── 가격 엔진 v1 컬럼 (비파괴 마이그레이션 database/price_engine_v1.sql) ────────
+// 마이그레이션이 아직 실행되지 않은 환경에서도 견적 접수가 절대 실패하지 않도록,
+// 컬럼 부재 오류가 나면 기존 컬럼만으로 재시도합니다.
+
+const MISSING_COLUMN_CODES = new Set(['PGRST204', '42703'])
+
+function isMissingColumnError(err: { code?: string | null; message?: string | null } | null): boolean {
+  if (!err) return false
+  if (err.code && MISSING_COLUMN_CODES.has(err.code)) return true
+  const msg = String(err.message || '')
+  return /could not find the .* column|column .* does not exist|schema cache/i.test(msg)
+}
+
+function textOrNull(v: unknown): string | null {
+  const s = String(v ?? '').trim()
+  return s ? s : null
+}
+
+function textArray(v: unknown): string[] | null {
+  if (!Array.isArray(v)) return null
+  const out = v.map((x) => String(x ?? '').trim()).filter(Boolean).slice(0, 20)
+  return out.length ? out : null
+}
+
+function intOrNull(v: unknown): number | null {
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.round(n) : null
+}
+
+function numberOrNull(v: unknown): number | null {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+/** 값이 있는 키만 남깁니다(빈 값으로 기존 컬럼을 덮어쓰지 않기 위해). */
+function definedOnly(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === null || v === undefined) continue
+    out[k] = v
+  }
+  return out
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -105,35 +150,81 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString()
 
     // ── 1. orders 테이블에 저장 ──────────────────────────────────────
-    const { data: order, error: orderError } = await supabaseAdmin
-      .from('orders')
-      .insert({
-        title,
-        description,
-        address: fullAddress,
-        visitDate,
-        status: 'pending',
-        category,
-        customerName,
-        customerPhone: normalizedPhone,
-        customerEmail: customerEmail || null,
-        isAnonymous: true,
-        images: imageUrls || [],
-        webPassword: pin,
-        createdAt: now,
-      })
-      .select('id')
-      .single()
+    const baseOrderPayload = {
+      title,
+      description,
+      address: fullAddress,
+      visitDate,
+      status: 'pending',
+      category,
+      customerName,
+      customerPhone: normalizedPhone,
+      customerEmail: customerEmail || null,
+      isAnonymous: true,
+      images: imageUrls || [],
+      webPassword: pin,
+      createdAt: now,
+    }
 
-    if (orderError) {
+    // 주소에서 시·도 / 시·군·구를 서버에서 직접 뽑습니다(클라이언트 입력을 신뢰하지 않음).
+    const region = splitAddressRegion(fullAddress)
+
+    const priceColumns = definedOnly({
+      tradeId: textOrNull(body.tradeId),
+      subcategory: textOrNull(body.subcategory),
+      symptomTags: textArray(body.symptomTags),
+      locationLevel1: region.locationLevel1,
+      locationLevel2: region.locationLevel2,
+      propertyType: textOrNull(body.propertyType),
+      urgency: textOrNull(body.urgency),
+      aiSummary: textOrNull(body.aiSummary),
+      aiMissingFields: textArray(body.aiMissingFields),
+      aiConfidence: numberOrNull(body.aiConfidence),
+      priceEngineVersion: textOrNull(body.priceEngineVersion),
+      priceState: textOrNull(body.priceState),
+      estimatedMin: intOrNull(body.estimatedMin),
+      estimatedMax: intOrNull(body.estimatedMax),
+      priceConfidenceLevel: textOrNull(body.priceConfidenceLevel),
+      priceEvidenceCount: intOrNull(body.priceEvidenceCount),
+      priceFactors: textArray(body.priceFactors),
+    })
+
+    let orderRow: { id: string } | null = null
+    let orderError: { code?: string | null; message?: string | null } | null = null
+
+    {
+      const first = await supabaseAdmin
+        .from('orders')
+        .insert({ ...baseOrderPayload, ...priceColumns })
+        .select('id')
+        .single()
+      orderRow = first.data as { id: string } | null
+      orderError = first.error
+
+      if (orderError && isMissingColumnError(orderError)) {
+        console.warn(
+          '[submit] ⚠️ 가격 엔진 컬럼이 orders 테이블에 없습니다. 기존 컬럼만으로 다시 저장합니다. ' +
+            'database/price_engine_v1.sql 을 실행해 주세요. (원인: ' + orderError.message + ')'
+        )
+        const retry = await supabaseAdmin
+          .from('orders')
+          .insert(baseOrderPayload)
+          .select('id')
+          .single()
+        orderRow = retry.data as { id: string } | null
+        orderError = retry.error
+      }
+    }
+
+    if (orderError || !orderRow) {
       console.error('[submit] orders 저장 실패:', orderError)
       return NextResponse.json(
-        { error: `견적 저장 실패: ${orderError.message}` },
+        { error: `견적 저장 실패: ${orderError?.message || '알 수 없는 오류'}` },
         { status: 500 }
       )
     }
 
-    const orderId = (order as { id: string }).id
+    const orderId = orderRow.id
 
     // ── 2. marketplace_listings 에도 저장 ────────────────────────────
     // 사업자가 앱 오더 목록에서 볼 수 있도록
