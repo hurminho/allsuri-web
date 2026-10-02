@@ -3,10 +3,18 @@ import { Suspense } from 'react'
 import Link from 'next/link'
 import RequestForm from './RequestForm'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { absoluteUrl } from '@/lib/site'
+
+const title = '무료 견적 요청 | 올수리'
+const description =
+  '누수·배관·화장실·방수 등 집수리 견적을 앱 설치 없이 요청하세요. 작업이 가능한 전문 업체가 직접 견적서를 보내드립니다.'
 
 export const metadata: Metadata = {
-  title: '무료 견적 요청 | 올수리',
-  description: '앱 설치 없이 집수리 무료 견적을 요청하세요. 800개 이상의 전문 업체가 견적서를 보내드립니다.',
+  title,
+  description,
+  // 카테고리·모드 쿼리 파라미터가 붙어도 한 URL 로 모이도록 고정합니다.
+  alternates: { canonical: absoluteUrl('/requests') },
+  openGraph: { title, description, url: absoluteUrl('/requests') },
 }
 
 type FeaturedBusiness = {

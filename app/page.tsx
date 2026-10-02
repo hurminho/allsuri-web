@@ -1,18 +1,19 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import Image from 'next/image'
 import { supabase, CATEGORIES, CATEGORY_ICONS } from '@/lib/supabase'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { SERVICE_GUIDES } from '@/lib/service-guides'
+import { SITE_NAME, absoluteUrl } from '@/lib/site'
+
+export const metadata: Metadata = {
+  alternates: { canonical: absoluteUrl('/') },
+}
 
 const steps = [
   { num: '01', title: '견적 요청', desc: '어떤 수리가 필요한지\n간단히 입력하세요', icon: '📝' },
-  { num: '02', title: '업체 매칭', desc: '800명 이상의 전문 업체가\n견적서를 보내드립니다', icon: '🔔' },
-  { num: '03', title: '비교 선택', desc: '가격과 후기를 보고\n마음에 드는 업체를 선택하세요', icon: '✅' },
-]
-
-const reviews = [
-  { name: '김○○', region: '서울 강남구', text: '누수 문제로 걱정이 많았는데 하루 만에 3곳에서 견적이 왔어요. 가격도 합리적이고 빠르게 해결했습니다.', category: '누수' },
-  { name: '이○○', region: '경기 수원시', text: '화장실 리모델링 견적을 앱 없이 바로 요청했는데 너무 편했어요. 전문가분도 친절하게 설명해주셨습니다.', category: '화장실' },
-  { name: '박○○', region: '서울 마포구', text: '옥상 방수 공사 견적을 여러 업체에서 받아 비교할 수 있어서 좋았어요~. 합리적인 가격에 깔끔하게 마무리됐습니다.', category: '방수' },
+  { num: '02', title: '업체 매칭', desc: '작업이 가능한 전문 업체가\n직접 견적서를 보내드립니다', icon: '🔔' },
+  { num: '03', title: '비교 선택', desc: '받은 견적을 비교해\n마음에 드는 업체를 선택하세요', icon: '✅' },
 ]
 
 type WebAd = { id: string; title: string; image_url: string | null; link_url: string | null; position: string }
@@ -92,8 +93,32 @@ export default async function Home() {
   const homeMiddleAds = ads.filter(a => a.position === 'home_middle')
   const homeBottomAds = ads.filter(a => a.position === 'home_bottom')
 
+  // 실제 후기·평점 데이터가 검증되기 전까지 Review/AggregateRating 은 넣지 않습니다.
+  const jsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: SITE_NAME,
+      url: absoluteUrl('/'),
+      inLanguage: 'ko-KR',
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      name: SITE_NAME,
+      url: absoluteUrl('/'),
+      logo: absoluteUrl('/app-icon.png'),
+      description: '집수리 전문가와 고객을 연결하는 견적 매칭 플랫폼',
+      areaServed: { '@type': 'Country', name: '대한민국' },
+    },
+  ]
+
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* 알림 배너 (관리자 설정 시 표시) */}
       {noticeBannerActive && settings.notice_banner && (
         <div className="bg-blue-700 text-white text-center text-sm py-2 px-4 font-medium">
@@ -122,7 +147,7 @@ export default async function Home() {
             <span className="text-yellow-300">올수리</span>에서 해결하세요
           </h1>
           <p className="text-blue-100 text-lg mb-8 leading-relaxed">
-            누수·배관·방수·리모델링 등 전문 업체 800곳 이상이<br className="hidden md:block" />
+            누수·배관·방수·리모델링 등 등록된 전문 업체가<br className="hidden md:block" />
             직접 견적서를 보내드립니다
           </p>
           <Link
@@ -132,7 +157,7 @@ export default async function Home() {
             한 줄 견적 요청 AI →
           </Link>
           <p className="mt-3 text-blue-100 text-sm">무슨 공사인지 몰라도 괜찮아요. 상황을 한 줄로 알려주세요.</p>
-          <p className="mt-4 text-blue-200 text-sm">평균 응답시간 2시간 이내 · 완전 무료 · <Link href="/requests?mode=manual" className="underline">직접 입력하기</Link></p>
+          <p className="mt-4 text-blue-200 text-sm">요청 비용 무료 · 앱 설치 불필요 · <Link href="/requests?mode=manual" className="underline">직접 입력하기</Link></p>
         </div>
       </section>
 
@@ -239,46 +264,46 @@ export default async function Home() {
         </section>
       )}
 
-      {/* Stats */}
-      <section className="py-12 px-4 bg-blue-600 text-white">
-        <div className="max-w-4xl mx-auto grid grid-cols-3 text-center gap-4">
-          <div>
-            <div className="text-3xl md:text-4xl font-bold">800+</div>
-            <div className="text-blue-200 text-sm mt-1">등록 전문 업체</div>
+      {/* 수리 종류별 안내 */}
+      <section className="py-14 px-4 bg-gray-50">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="text-2xl font-bold text-center text-gray-800 mb-2">어떤 작업이 필요한지 모르시겠다면</h2>
+          <p className="text-center text-gray-500 mb-10">증상과 확인할 점부터 정리해 두었습니다</p>
+          <div className="grid sm:grid-cols-2 gap-4">
+            {SERVICE_GUIDES.map((guide) => (
+              <Link
+                key={guide.slug}
+                href={`/services/${guide.slug}`}
+                className="bg-white rounded-2xl border border-gray-200 hover:border-blue-400 hover:shadow-sm p-5 transition-all"
+              >
+                <h3 className="font-bold text-gray-900 mb-1.5">{guide.navLabel} 수리 안내</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">{guide.description}</p>
+                <span className="inline-block text-sm text-blue-600 font-semibold mt-3">자세히 보기 →</span>
+              </Link>
+            ))}
           </div>
-          <div>
-            <div className="text-3xl md:text-4xl font-bold">무료</div>
-            <div className="text-blue-200 text-sm mt-1">견적 요청 비용</div>
-          </div>
-          <div>
-            <div className="text-3xl md:text-4xl font-bold">2시간</div>
-            <div className="text-blue-200 text-sm mt-1">평균 응답 시간</div>
+          <div className="text-center mt-8">
+            <Link href="/services" className="text-blue-600 font-semibold hover:underline">
+              수리 안내 전체 보기 →
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* Reviews */}
-      <section className="py-14 px-4 bg-white">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold text-center text-gray-800 mb-2">고객 후기</h2>
-          <p className="text-center text-gray-500 mb-10">실제 이용하신 분들의 이야기</p>
-          <div className="grid md:grid-cols-3 gap-5">
-            {reviews.map((r, i) => (
-              <div key={i} className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-sm font-bold text-blue-600">
-                    {r.name[0]}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-gray-800 text-sm">{r.name}</div>
-                    <div className="text-xs text-gray-400">{r.region}</div>
-                  </div>
-                  <span className="ml-auto text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">{r.category}</span>
-                </div>
-                <div className="text-yellow-400 text-sm mb-2">★★★★★</div>
-                <p className="text-gray-600 text-sm leading-relaxed">{r.text}</p>
-              </div>
-            ))}
+      {/* 이용 조건 — 검증 가능한 사실만 */}
+      <section className="py-12 px-4 bg-blue-600 text-white">
+        <div className="max-w-4xl mx-auto grid grid-cols-3 text-center gap-4">
+          <div>
+            <div className="text-2xl md:text-3xl font-bold">무료</div>
+            <div className="text-blue-200 text-sm mt-1">견적 요청 비용</div>
+          </div>
+          <div>
+            <div className="text-2xl md:text-3xl font-bold">앱 없이</div>
+            <div className="text-blue-200 text-sm mt-1">웹에서 바로 요청</div>
+          </div>
+          <div>
+            <div className="text-2xl md:text-3xl font-bold">가입 없이</div>
+            <div className="text-blue-200 text-sm mt-1">전화번호로 조회</div>
           </div>
         </div>
       </section>

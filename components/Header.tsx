@@ -17,6 +17,7 @@ export default function Header() {
 
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-600">
+          <Link href="/services" className="hover:text-blue-600 transition-colors">수리 안내</Link>
           <Link href="/requests" className="hover:text-blue-600 transition-colors">견적 요청</Link>
           <Link href="/my-order" className="hover:text-blue-600 transition-colors font-semibold">내 견적</Link>
           <Link
@@ -48,6 +49,7 @@ export default function Header() {
       {/* Mobile menu */}
       {menuOpen && (
         <div className="md:hidden border-t border-gray-100 bg-white px-4 py-3 flex flex-col gap-3 text-sm font-medium text-gray-700">
+          <Link href="/services" className="py-2 hover:text-blue-600" onClick={() => setMenuOpen(false)}>수리 안내</Link>
           <Link href="/requests" className="py-2 hover:text-blue-600" onClick={() => setMenuOpen(false)}>견적 요청</Link>
           <Link href="/my-order" className="py-2 text-blue-600 font-semibold hover:text-blue-700" onClick={() => setMenuOpen(false)}>내 견적</Link>
           <Link

@@ -1,10 +1,17 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import AiInterview from './AiInterview'
+import { absoluteUrl } from '@/lib/site'
+
+const title = '한 줄 견적 요청 AI | 올수리'
+const description =
+  '무슨 공사인지 몰라도 한 줄로 알려주시면 AI가 필요한 질문만 드린 뒤 견적 요청서를 만들어 드립니다.'
 
 export const metadata: Metadata = {
-  title: '한 줄 견적 요청 AI | 올수리',
-  description: '무슨 공사인지 몰라도 한 줄로 알려주시면 AI가 견적 요청서를 만들어 드립니다.',
+  title,
+  description,
+  alternates: { canonical: absoluteUrl('/requests/ai') },
+  openGraph: { title, description, url: absoluteUrl('/requests/ai') },
 }
 
 export default function AiRequestPage() {

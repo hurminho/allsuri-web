@@ -1,9 +1,13 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { absoluteUrl } from '@/lib/site'
 
 export const metadata: Metadata = {
-  title: '시공 후기 | 올수리',
-  description: '올수리 전문 업체의 실제 시공 후기와 사진을 확인하세요.',
+  title: '시공 후기 (준비 중) | 올수리',
+  description: '전문 업체의 시공 사진과 후기를 모아볼 공간입니다. 현재 준비 중입니다.',
+  alternates: { canonical: absoluteUrl('/community') },
+  // 아직 내용이 없는 준비중 페이지입니다. 공개될 때 색인 설정을 다시 켜야 합니다.
+  robots: { index: false, follow: true },
 }
 
 export default function CommunityPage() {

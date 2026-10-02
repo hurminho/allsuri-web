@@ -2,10 +2,17 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import BusinessList from './BusinessList'
+import { absoluteUrl } from '@/lib/site'
+
+const title = '전문 사업자 찾기 | 올수리'
+const description =
+  '올수리에 등록된 집수리 전문 사업자를 지역과 분야로 찾아보세요. 누수·배관·방수·리모델링 업체를 확인할 수 있습니다.'
 
 export const metadata: Metadata = {
-  title: '전문 사업자 찾기 | 올수리',
-  description: '올수리에 등록된 집수리 전문 사업자를 찾아보세요. 누수·배관·방수·리모델링 전문 업체 800곳 이상.',
+  title,
+  description,
+  alternates: { canonical: absoluteUrl('/business') },
+  openGraph: { title, description, url: absoluteUrl('/business') },
 }
 
 export const revalidate = 60

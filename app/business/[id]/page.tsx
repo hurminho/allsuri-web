@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
+import { absoluteUrl } from '@/lib/site'
 
 export const revalidate = 300
 
@@ -42,6 +43,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: b ? `${b.businessname || b.name} | 올수리 사업자` : '사업자 프로필 | 올수리',
     description: b?.bio || `${b?.businessname || b?.name}의 올수리 사업자 프로필`,
+    alternates: { canonical: absoluteUrl(`/business/${id}`) },
   }
 }
 

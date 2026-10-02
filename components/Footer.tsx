@@ -1,10 +1,11 @@
 import Link from 'next/link'
 import Image from 'next/image'
+import { SERVICE_GUIDES } from '@/lib/service-guides'
 
 export default function Footer() {
   return (
     <footer className="bg-gray-900 text-gray-300 mt-16">
-      <div className="max-w-5xl mx-auto px-4 py-10 grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="max-w-5xl mx-auto px-4 py-10 grid grid-cols-1 md:grid-cols-4 gap-8">
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Image src="/app-icon.png" alt="올수리" width={32} height={32} className="rounded-lg" />
@@ -20,6 +21,19 @@ export default function Footer() {
           <ul className="space-y-2 text-sm">
             <li><Link href="/requests" className="hover:text-white transition-colors">견적 요청</Link></li>
             <li><Link href="/my-order" className="hover:text-white transition-colors">내 견적</Link></li>
+            <li><Link href="/business" className="hover:text-white transition-colors">전문 사업자 찾기</Link></li>
+          </ul>
+        </div>
+        <div>
+          <h3 className="text-white font-semibold mb-3">수리 안내</h3>
+          <ul className="space-y-2 text-sm">
+            {SERVICE_GUIDES.map((guide) => (
+              <li key={guide.slug}>
+                <Link href={`/services/${guide.slug}`} className="hover:text-white transition-colors">
+                  {guide.navLabel} 수리 안내
+                </Link>
+              </li>
+            ))}
           </ul>
         </div>
         <div>

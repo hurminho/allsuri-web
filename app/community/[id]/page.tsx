@@ -31,6 +31,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const post = await getPost(id)
   return {
     title: post ? `${post.title} | 올수리 커뮤니티` : '게시글 | 올수리',
+    // 커뮤니티가 아직 공개 준비 중이라 목록에서 접근할 수 없습니다. 공개 시 함께 켜야 합니다.
+    robots: { index: false, follow: true },
   }
 }
 
