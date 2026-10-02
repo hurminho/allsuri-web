@@ -140,3 +140,73 @@
    (자동 조회가 차단되어 사람이 직접 확인해야 합니다)
 5. 사업자 프로필 공개 노출 동의 여부
 6. 별도 소유 도메인(예: `allsuri.app` 계열) 을 소비자 웹의 대표 도메인으로 쓸 계획이 있는지
+
+---
+
+## 3. 배포 후 검증 결과 (2026-10-02, 커밋 `ae3b20e`)
+
+### 응답 코드와 Content-Type
+
+| URL | HTTP | Content-Type |
+| --- | --- | --- |
+| `/` | 200 | text/html |
+| `/services` | 200 | text/html |
+| `/services/leak` | 200 | text/html |
+| `/services/plumbing` | 200 | text/html |
+| `/services/bathroom` | 200 | text/html |
+| `/services/waterproofing` | 200 | text/html |
+| `/requests` | 200 | text/html |
+| `/requests/ai` | 200 | text/html |
+| `/business` | 200 | text/html |
+| `/my-order` | 200 | text/html (noindex) |
+| `/community` | 200 | text/html (noindex) |
+| `/robots.txt` | 200 | **text/plain** |
+| `/sitemap.xml` | 200 | **application/xml** |
+| `/no-such-page-abc123` | **404** | text/html |
+| `/admin` | 307 → `/admin/login` | — |
+
+- 응답 헤더에 `X-Robots-Tag` 없음(확인 완료). 색인 제어는 페이지 메타태그만으로 이뤄집니다.
+- 존재하지 않는 URL 이 200 으로 홈을 돌려주는 문제는 없습니다.
+
+### 사이트맵
+
+`/sitemap.xml` 의 9개 URL 을 모두 요청해 **전부 200** 을 확인했습니다.
+비공개·준비중·프로필 URL 은 포함되지 않았습니다.
+
+### 페이지별 메타
+
+공개 9개 페이지 모두 `title` 이 서로 다르고, `canonical` 과 `og:url` 이 자기 URL 과 일치합니다.
+`/my-order` 와 `/community` 는 `robots: noindex, follow` 가 적용됐습니다.
+
+### 신규 안내 페이지 본문 규모
+
+| URL | H1 | H2 | 본문 글자수 |
+| --- | --- | --- | --- |
+| `/services/leak` | 1 | 9 | 2,961 |
+| `/services/plumbing` | 1 | 9 | 2,442 |
+| `/services/bathroom` | 1 | 9 | 2,462 |
+| `/services/waterproofing` | 1 | 9 | 2,416 |
+
+모두 자바스크립트 실행 전 원본 HTML 에 포함되어 있습니다(SSG 로 사전 생성).
+
+### 허위·과장 콘텐츠 제거 확인
+
+홈 원본 HTML 에서 `고객 후기`, `실제 이용하신`, `김○○`, `평균 응답`, `2시간` 문구가 모두
+사라졌습니다. 남아 있는 `800` 문자열 8건은 전부 Tailwind 색상 클래스(`text-gray-800` 등)이며
+주장 문구가 아닙니다.
+
+### 기존 기능 유지 확인
+
+- `/requests` 견적 요청 폼 정상, `?category=누수` 쿼리 반영 정상
+- `/requests/ai` AI 인터뷰 화면 정상
+- `/my-order` 조회 화면 정상 (서버 HTML 에 H1 추가됨)
+- `/business` 사업자 목록 정상
+- `/api/ai/status`, `/api/web-content`, `/api/featured-businesses` 모두 200
+- `/admin` 로그인 리다이렉트 유지
+- 390x844 모바일 뷰포트에서 `/services/leak` 레이아웃 정상 렌더링 확인
+
+### 아직 하지 않은 것
+
+- `public/app-icon.png` (1.0MB) 경량화
+- `public/` 의 미사용 Next/Vercel 템플릿 SVG(`file.svg`, `globe.svg`, `next.svg`, `vercel.svg`, `window.svg`) 정리
+- 서치어드바이저 콘솔 작업 전부 (계정 권한 없음) → `docs/naver-searchadvisor-checklist.md`
