@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { SMS_TEMPLATE_ENV_KEYS, SMS_TEMPLATES, type SmsTemplateId } from './sms-templates'
 
-const DEFAULT_WEB_ORIGIN = 'https://allsuricommerce.netlify.app'
+const DEFAULT_WEB_ORIGIN = 'https://allsuri.app'
 
 function runtimeEnv(name: string): string {
   return String((process.env as Record<string, string | undefined>)[name] || '').trim()
