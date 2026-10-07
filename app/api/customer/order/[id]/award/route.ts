@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin, normalizePhone, businessCanActFromRow } from '@/lib/supabase-server'
 import { customerOrderUrl, formatPhoneDisplay, sendSms, smsBidAwarded } from '@/lib/solapi-sms'
-import { COMMISSION_RATE } from '@/lib/commission'
+import { WEB_ORDER_COMMISSION_RATE } from '@/lib/commission'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: orderId } = await params
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       location: order.address || '',
       category: order.category || '',
       urgency: 'normal',
-      budget_amount: bidAmount, awarded_amount: bidAmount, commission_rate: COMMISSION_RATE,
+      budget_amount: bidAmount, awarded_amount: bidAmount, commission_rate: WEB_ORDER_COMMISSION_RATE,
       web_order_id: orderId,
       created_at: now, updated_at: now,
     }).select('id').maybeSingle()
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       description: `[웹 고객 낙찰]\n요청: ${order.description || ''}\n\n📞 고객: ${customerName} / ${customerPhone}\n📍 주소: ${order.address || ''}`,
       owner_business_id: businessId, assigned_business_id: businessId,
       status: 'assigned', location: order.address || '', category: order.category || '',
-      urgency: 'normal', budget_amount: estAmount, awarded_amount: estAmount, commission_rate: COMMISSION_RATE,
+      urgency: 'normal', budget_amount: estAmount, awarded_amount: estAmount, commission_rate: WEB_ORDER_COMMISSION_RATE,
       web_order_id: orderId,
       created_at: now, updated_at: now,
     }).select('id').maybeSingle()
