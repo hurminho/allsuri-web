@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-server'
+import { getPublicBusiness } from '@/lib/public-business'
 import { notFound } from 'next/navigation'
 import { absoluteUrl } from '@/lib/site'
 
@@ -17,18 +18,11 @@ type Review = {
 }
 
 async function getBusiness(id: string) {
-  const { data, error } = await supabase
-    .from('users')
-    .select('id, name, businessname, avatar_url, address, serviceareas, specialties, bio, createdat, estimates_created_count, jobs_accepted_count, description, category, region, phonenumber, profile_image_url')
-    .eq('id', id)
-    .eq('role', 'business')
-    .single()
-  if (error || !data) return null
-  return data
+  return getPublicBusiness(id)
 }
 
 async function getReviews(businessId: string): Promise<Review[]> {
-  const { data } = await supabase
+  const { data } = await supabaseAdmin
     .from('business_reviews')
     .select('id, reviewer_name, rating, content, created_at')
     .eq('business_id', businessId)
@@ -101,7 +95,7 @@ export default async function BusinessProfilePage({ params }: Props) {
   const maxDist = Math.max(...Object.values(dist))
 
   // 상호명 우선, 없으면 이름
-  const displayName = (b.businessname && b.businessname.trim()) ? b.businessname : b.name
+  const displayName = ((b.businessname && b.businessname.trim()) ? b.businessname : b.name) || '사업자'
   const showPersonName = b.name && b.name !== displayName
 
   return (

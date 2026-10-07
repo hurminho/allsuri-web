@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import Image from 'next/image'
 import { supabase, CATEGORIES, CATEGORY_ICONS } from '@/lib/supabase'
-import { supabaseAdmin } from '@/lib/supabase-server'
+import { getFeaturedBusinesses, type FeaturedBusiness } from '@/lib/public-business'
 import { SERVICE_GUIDES } from '@/lib/service-guides'
 import { SITE_NAME, absoluteUrl } from '@/lib/site'
 
@@ -17,12 +17,6 @@ const steps = [
 ]
 
 type WebAd = { id: string; title: string; image_url: string | null; link_url: string | null; position: string }
-type FeaturedBusiness = {
-  id: string; userId: string; businessName: string
-  phonenumber: string; category: string; region: string
-  avatarUrl: string | null; jobsCount: number
-  avgRating: number | null; reviewCount: number
-}
 
 async function getWebContent(): Promise<{ settings: Record<string, string>; ads: WebAd[]; featured: FeaturedBusiness[] }> {
   // ── 사이트 설정 + 광고 (anon key – public 테이블)
@@ -35,53 +29,8 @@ async function getWebContent(): Promise<{ settings: Record<string, string>; ads:
   const settings: Record<string, string> = {}
   ;(settingsData || []).forEach((s: { key: string; value: string }) => { settings[s.key] = s.value })
 
-  // ── 추천 업체: supabaseAdmin (service_role) 사용 → users RLS bypass
-  let featured: FeaturedBusiness[] = []
-  try {
-    const { data: featData } = await supabaseAdmin
-      .from('web_featured_businesses')
-      .select('id, user_id')
-      .order('sort_order', { ascending: true })
-
-    const featList = (featData || []) as { id: string; user_id: string }[]
-    const featIds = featList.map(f => f.user_id).filter(Boolean)
-
-    if (featIds.length > 0) {
-      const [{ data: usersData }, { data: reviewsData }] = await Promise.all([
-        supabaseAdmin.from('users').select('id, name, businessname, phonenumber, category, region, avatar_url, jobs_accepted_count').in('id', featIds),
-        supabaseAdmin.from('business_reviews').select('business_id, rating').in('business_id', featIds),
-      ])
-
-      const usersMap: Record<string, { id: string; name: string; businessname: string | null; phonenumber: string | null; category: string | null; region: string | null; avatar_url: string | null; jobs_accepted_count: number | null }> = {}
-      ;(usersData || []).forEach((u: typeof usersMap[string]) => { usersMap[u.id] = u })
-
-      const ratingMap: Record<string, { sum: number; count: number }> = {}
-      ;(reviewsData || []).forEach((r: { business_id: string; rating: number }) => {
-        if (!ratingMap[r.business_id]) ratingMap[r.business_id] = { sum: 0, count: 0 }
-        ratingMap[r.business_id].sum += r.rating
-        ratingMap[r.business_id].count += 1
-      })
-
-      featured = featList.map(f => {
-        const u = usersMap[f.user_id]
-        if (!u) return null
-        const rm = ratingMap[f.user_id]
-        return {
-          id: f.id, userId: f.user_id,
-          businessName: u.businessname || u.name || '',
-          phonenumber: u.phonenumber || '',
-          category: u.category || '',
-          region: u.region || '',
-          avatarUrl: u.avatar_url || null,
-          jobsCount: u.jobs_accepted_count || 0,
-          avgRating: rm ? Math.round((rm.sum / rm.count) * 10) / 10 : null,
-          reviewCount: rm?.count || 0,
-        }
-      }).filter((x): x is FeaturedBusiness => x !== null)
-    }
-  } catch (e) {
-    console.warn('[getWebContent] featured 로드 실패:', e)
-  }
+  // ── 추천 업체(⭐ 광고): 서버에서 공개 컬럼만 조회
+  const featured = await getFeaturedBusinesses()
 
   return { settings, ads: (adsData || []) as WebAd[], featured }
 }
@@ -226,7 +175,8 @@ export default async function Home() {
                   {/* 아바타 */}
                   <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xl mb-3 overflow-hidden">
                     {biz.avatarUrl
-                      ? <img src={biz.avatarUrl} alt={biz.businessName} className="w-full h-full object-cover" />
+                      ? // eslint-disable-next-line @next/next/no-img-element
+                        <img src={biz.avatarUrl} alt={biz.businessName} className="w-full h-full object-cover" />
                       : biz.businessName[0]}
                   </div>
                   {/* 업체명 */}

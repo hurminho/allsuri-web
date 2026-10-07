@@ -5,16 +5,37 @@ import { splitAddressRegion } from '@/lib/address-region'
 // 고객 견적 폼 제출:
 // 1. orders 테이블에 저장 (B2C 고객 레코드)
 // 2. marketplace_listings 테이블에도 저장 (B2B와 동일한 앱 오더 목록)
-// 3. 알림 전송:
-//    - DB 알림: 전체 사업자에게 단일 INSERT (빠름)
-//    - FCM 푸시: fcm_token 보유 사용자에게만 전송 (적은 수 → 빠름)
+// 3. 알림: 승인된 사업자에게 notifications INSERT.
+//    푸시(FCM)는 notifications INSERT 웹훅(send-push-webhook)이 한 건씩 보냅니다.
 //    → 응답 반환 전에 동기적으로 실행 (fire-and-forget 안 씀)
-//    → FCM은 8초 타임아웃으로 timeout 보호
-
-const ALLSURIAPP_API_URL = process.env.ALLSURIAPP_API_URL || 'https://api.allsuri.app'
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 
 type UserRow = { id: string }
+
+const NOTIFY_PAGE = 1000
+const NOTIFY_MAX = 5000
+const INSERT_CHUNK = 500
+
+/** 알림 대상: 승인된 사업자 전체. 예전에는 users 앞쪽 500명(고객·관리자 포함)에게 보내 실제 사업자가 빠졌습니다. */
+async function approvedBusinessIds(): Promise<string[]> {
+  const ids: string[] = []
+  for (let from = 0; from < NOTIFY_MAX; from += NOTIFY_PAGE) {
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('role', 'business')
+      .eq('businessstatus', 'approved')
+      .order('id')
+      .range(from, from + NOTIFY_PAGE - 1)
+    if (error) {
+      console.warn('[submit] 알림 대상 조회 실패:', error.message)
+      break
+    }
+    const rows = (data || []) as UserRow[]
+    ids.push(...rows.map((u) => u.id))
+    if (rows.length < NOTIFY_PAGE) break
+  }
+  return ids
+}
 
 async function sendWebOrderNotifications(
   listingId: string, title: string, category: string, address: string
@@ -24,65 +45,25 @@ async function sendWebOrderNotifications(
   const notifBody = `[${category}] ${title} · ${regionShort}`
   const now = new Date().toISOString()
 
-  // 전체 사용자 & FCM 토큰 보유 사용자를 병렬 조회
-  const [allRes, fcmRes] = await Promise.all([
-    supabaseAdmin.from('users').select('id').limit(500),
-    supabaseAdmin.from('users').select('id').not('fcm_token', 'is', null).limit(300),
-  ])
+  const ids = await approvedBusinessIds()
+  console.log(`[submit] 알림 대상 사업자: ${ids.length}명 (listing=${listingId})`)
 
-  const allIds = (allRes.data || []).map((u: UserRow) => u.id)
-  const fcmIds = (fcmRes.data || []).map((u: UserRow) => u.id)
-
-  console.log(`[submit] 전체 사용자: ${allIds.length}명, FCM 토큰 보유: ${fcmIds.length}명`)
-
-  // ① DB 알림: 전체 사용자 일괄 INSERT (단 1회 요청, 매우 빠름)
-  if (allIds.length > 0) {
+  let saved = 0
+  for (let i = 0; i < ids.length; i += INSERT_CHUNK) {
+    const part = ids.slice(i, i + INSERT_CHUNK)
     const { error } = await supabaseAdmin.from('notifications').insert(
-      allIds.map(uid => ({
+      part.map((uid) => ({
         userid: uid, title: notifTitle, body: notifBody,
         type: 'new_web_order', isread: false, createdat: now,
       }))
     )
-    if (error) console.warn('[submit] DB 알림 저장 실패:', error.message)
-    else console.log(`[submit] ✅ DB 알림 ${allIds.length}명 저장 완료`)
-  }
-
-  // ② FCM 푸시: fcm_token 보유 사용자에게만 전송 (skipDbInsert=true → 중복 DB 저장 방지)
-  if (fcmIds.length > 0 && SERVICE_ROLE_KEY) {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 8000) // 8s 타임아웃
-    try {
-      const res = await fetch(
-        `${ALLSURIAPP_API_URL}/.netlify/functions/notifications-send-bulk`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
-          },
-          body: JSON.stringify({
-            userIds: fcmIds,
-            title: notifTitle,
-            body: notifBody,
-            data: { type: 'new_web_order', listingId },
-            skipDbInsert: true,  // DB 알림은 위에서 이미 저장
-          }),
-          signal: controller.signal,
-        }
-      )
-      clearTimeout(timer)
-      if (res.ok) {
-        const r = await res.json() as { sent?: number; total?: number; failed?: number }
-        console.log(`[submit] ✅ FCM 발송 완료: sent=${r.sent}/${r.total}, failed=${r.failed}`)
-      } else {
-        console.warn(`[submit] ⚠️ FCM bulk 오류 (${res.status}):`, await res.text())
-      }
-    } catch (e: unknown) {
-      clearTimeout(timer)
-      const msg = e instanceof Error ? e.message : String(e)
-      console.warn('[submit] FCM 발송 실패/타임아웃 (DB 알림은 저장됨):', msg)
+    if (error) {
+      console.warn('[submit] DB 알림 저장 실패:', error.message)
+      break
     }
+    saved += part.length
   }
+  console.log(`[submit] ✅ DB 알림 ${saved}명 저장 (푸시는 웹훅이 발송)`)
 }
 
 // ── 가격 엔진 v1 컬럼 (비파괴 마이그레이션 database/price_engine_v1.sql) ────────
@@ -256,7 +237,8 @@ export async function POST(req: NextRequest) {
         listingError.message?.includes('web_order_id') ||
         listingError.message?.includes('column')
       ) {
-        const { web_order_id: _omit, ...payloadWithoutWebOrderId } = listingPayload
+        const payloadWithoutWebOrderId = { ...listingPayload } as Record<string, unknown>
+        delete payloadWithoutWebOrderId.web_order_id
         const { data: listing2, error: listingError2 } = await supabaseAdmin
           .from('marketplace_listings')
           .insert(payloadWithoutWebOrderId)

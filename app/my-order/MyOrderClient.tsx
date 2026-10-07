@@ -24,6 +24,8 @@ interface Estimate {
   region?: string; bizDescription?: string; avatarUrl?: string | null
   hasBusinessReg?: boolean; jobsCount?: number
   avgRating?: number | null; reviewCount?: number
+  /** 승인·사업자번호 확인이 끝난 업체만 낙찰할 수 있습니다 */
+  canAward?: boolean
 }
 interface Business {
   id: string; name: string; businessname: string; phonenumber: string
@@ -37,6 +39,10 @@ interface OrderDetail {
     category: string; address: string; visitDate: string; createdAt: string
     isAwarded: boolean; awardedEstimateId: string; images: string[]
     adminRating?: number; adminRatingComment?: string; listingId?: string
+    /** 사업자가 앱에서 '공사 완료'를 알렸는지 */
+    workDoneReported?: boolean
+    /** 지금 완료 확인을 할 수 있는지 (완료 알림 또는 방문 희망일 경과) */
+    canConfirmCompletion?: boolean
   }
   estimates: Estimate[]
   awardedBusiness: Business | null
@@ -44,10 +50,11 @@ interface OrderDetail {
 
 // ── 유틸 ────────────────────────────────────────────────────────────
 const STATUS_LABEL: Record<string, string> = {
-  pending: '대기중', in_progress: '진행중', completed: '완료', cancelled: '취소',
+  pending: '대기중', bidding: '입찰중', in_progress: '진행중', completed: '완료', cancelled: '취소',
 }
 const STATUS_COLOR: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-700', in_progress: 'bg-blue-100 text-blue-700',
+  pending: 'bg-yellow-100 text-yellow-700', bidding: 'bg-yellow-100 text-yellow-700',
+  in_progress: 'bg-blue-100 text-blue-700',
   completed: 'bg-green-100 text-green-700', cancelled: 'bg-gray-100 text-gray-500',
 }
 function maskAddress(addr: string) {
@@ -157,8 +164,12 @@ export default function MyOrderClient() {
   async function openOrder(orderId: string) {
     setCurrentOrderId(orderId); setLoading(true); setError('')
     try {
-      const nPhone = phone.replace(/[^0-9]/g, '')
-      const res = await fetch(`/api/customer/order/${orderId}?phone=${encodeURIComponent(nPhone)}&pwd=${encodeURIComponent(pwd)}`)
+      // 전화번호·비밀번호는 주소(쿼리)가 아니라 본문으로 보냅니다(접속 기록에 남지 않게).
+      const res = await fetch(`/api/customer/order/${orderId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone.replace(/[^0-9]/g, ''), password: pwd }),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || '조회 실패')
       setDetail(data); setScreen('dashboard'); setRating(0); setRatingComment('')
@@ -222,7 +233,10 @@ export default function MyOrderClient() {
 
   // ── 완료 확인 ─────────────────────────────────────────────────────
   async function doComplete() {
-    if (!confirm('공사가 완료되었음을 확인하시겠습니까?')) return
+    const question = detail?.order.workDoneReported
+      ? '공사가 완료되었음을 확인하시겠습니까?'
+      : '사업자가 아직 공사 완료를 알리지 않았습니다.\n공사가 모두 끝난 경우에만 확인해 주세요. 완료로 처리할까요?'
+    if (!confirm(question)) return
     setLoading(true)
     try {
       const res = await fetch(`/api/customer/order/${currentOrderId}/complete`, {
@@ -389,7 +403,6 @@ export default function MyOrderClient() {
                   const bizName = biz ? (biz.businessname || biz.name) : est?.businessName
                   const bizCategory = biz?.category || est?.equipmentType
                   const bizRegion = biz?.region || est?.region
-                  const bizId = biz?.id || est?.businessId
                   const bizPersonName = biz
                     ? resolvePersonName({
                         name: biz.name,
@@ -469,7 +482,8 @@ export default function MyOrderClient() {
                         <div className="flex items-start gap-3 mb-3">
                           <div className="relative flex-shrink-0">
                             {e.avatarUrl
-                              ? <img src={e.avatarUrl} alt={e.businessName} className="w-12 h-12 rounded-full object-cover" />
+                              ? // eslint-disable-next-line @next/next/no-img-element
+                                <img src={e.avatarUrl} alt={e.businessName} className="w-12 h-12 rounded-full object-cover" />
                               : <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-lg">{(e.businessName || '?')[0]}</div>
                             }
                             {e.hasBusinessReg && (
@@ -527,11 +541,19 @@ export default function MyOrderClient() {
                             className="flex-1 border border-gray-300 text-gray-700 py-2.5 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors">
                             후기 보기
                           </button>
-                          <button
-                            onClick={() => setAwardPending({ estimateId: e.id, businessId: e.businessId, bizName: e.businessName, isBid: e.isBid })}
-                            className="flex-[2] bg-blue-600 text-white py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">
-                            이 업체 낙찰하기
-                          </button>
+                          {e.canAward === false ? (
+                            <button disabled
+                              title="사업자 정보 확인이 끝나면 선택할 수 있습니다"
+                              className="flex-[2] bg-gray-200 text-gray-500 py-2.5 rounded-xl text-sm font-bold cursor-not-allowed">
+                              사업자 확인 중
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setAwardPending({ estimateId: e.id, businessId: e.businessId, bizName: e.businessName, isBid: e.isBid })}
+                              className="flex-[2] bg-blue-600 text-white py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">
+                              이 업체 낙찰하기
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -542,13 +564,23 @@ export default function MyOrderClient() {
 
             {/* 공사 완료 확인 */}
             {detail.order.status === 'in_progress' && detail.order.isAwarded && (
-              <div className="mb-4">
-                <button onClick={doComplete} disabled={loading}
-                  className="w-full bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white py-3.5 rounded-2xl font-bold transition-colors">
-                  ✅ 공사 완료 확인
-                </button>
-                <p className="text-center text-xs text-gray-400 mt-2">공사가 완료되었으면 버튼을 눌러 주세요</p>
-              </div>
+              detail.order.canConfirmCompletion ? (
+                <div className="mb-4">
+                  <button onClick={doComplete} disabled={loading}
+                    className="w-full bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white py-3.5 rounded-2xl font-bold transition-colors">
+                    ✅ 공사 완료 확인
+                  </button>
+                  <p className="text-center text-xs text-gray-400 mt-2">
+                    {detail.order.workDoneReported
+                      ? '사업자가 공사 완료를 알렸습니다. 확인 후 버튼을 눌러 주세요'
+                      : '공사가 완료되었으면 버튼을 눌러 주세요'}
+                  </p>
+                </div>
+              ) : (
+                <div className="mb-4 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3 text-sm text-blue-800">
+                  🔧 공사가 진행 중입니다. 사업자가 공사 완료를 알리면(또는 방문 희망일이 지나면) 여기서 완료를 확인할 수 있어요.
+                </div>
+              )
             )}
 
             {/* 평점 */}

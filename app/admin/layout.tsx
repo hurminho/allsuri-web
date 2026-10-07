@@ -14,6 +14,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   const user = await getAdminUser()
   if (!user) redirect('/admin/login')
+  // 로그인만으로는 부족합니다. 관리자 계정이 아니면 들어올 수 없습니다(로그인 화면의 확인은 브라우저 쪽이라 우회 가능).
+  if (!(user.is_admin || user.role === 'admin')) redirect('/admin/login?error=forbidden')
 
   return (
     <div className="min-h-screen bg-gray-100 flex">

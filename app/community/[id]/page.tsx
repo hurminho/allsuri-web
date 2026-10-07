@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
+import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/site'
 
 export const revalidate = 60
 
@@ -96,7 +97,7 @@ export default async function PostDetailPage({ params }: Props) {
 
           {/* Comment prompt */}
           <div className="mt-4 bg-gray-50 rounded-xl p-4 text-sm text-gray-500 text-center">
-            댓글 작성은 <a href="https://apps.apple.com" className="text-blue-600 hover:underline">올수리 앱</a>에서 가능합니다
+            댓글 작성은 올수리 앱(<a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">App Store</a> · <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Google Play</a>)에서 가능합니다
           </div>
         </div>
       </div>

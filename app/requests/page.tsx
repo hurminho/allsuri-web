@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import Link from 'next/link'
 import RequestForm from './RequestForm'
-import { supabaseAdmin } from '@/lib/supabase-server'
+import { getFeaturedBusinesses } from '@/lib/public-business'
 import { absoluteUrl } from '@/lib/site'
 
 const title = '무료 견적 요청 | 올수리'
@@ -15,58 +15,6 @@ export const metadata: Metadata = {
   // 카테고리·모드 쿼리 파라미터가 붙어도 한 URL 로 모이도록 고정합니다.
   alternates: { canonical: absoluteUrl('/requests') },
   openGraph: { title, description, url: absoluteUrl('/requests') },
-}
-
-type FeaturedBusiness = {
-  id: string; userId: string; businessName: string
-  phonenumber: string; category: string; region: string
-  avatarUrl: string | null; avgRating: number | null; reviewCount: number
-}
-
-async function getFeaturedBusinesses(): Promise<FeaturedBusiness[]> {
-  try {
-    // supabaseAdmin (service_role) 사용 → users RLS bypass
-    const { data: featData } = await supabaseAdmin
-      .from('web_featured_businesses')
-      .select('id, user_id')
-      .order('sort_order', { ascending: true })
-
-    if (!featData || featData.length === 0) return []
-
-    const featList = featData as { id: string; user_id: string }[]
-    const ids = featList.map(f => f.user_id).filter(Boolean)
-
-    const [{ data: usersData }, { data: reviewsData }] = await Promise.all([
-      supabaseAdmin.from('users').select('id, name, businessname, phonenumber, category, region, avatar_url').in('id', ids),
-      supabaseAdmin.from('business_reviews').select('business_id, rating').in('business_id', ids),
-    ])
-
-    const usersMap: Record<string, { id: string; name: string; businessname: string | null; phonenumber: string | null; category: string | null; region: string | null; avatar_url: string | null }> = {}
-    ;(usersData || []).forEach((u: typeof usersMap[string]) => { usersMap[u.id] = u })
-
-    const ratingMap: Record<string, { sum: number; count: number }> = {}
-    ;(reviewsData || []).forEach((r: { business_id: string; rating: number }) => {
-      if (!ratingMap[r.business_id]) ratingMap[r.business_id] = { sum: 0, count: 0 }
-      ratingMap[r.business_id].sum += r.rating
-      ratingMap[r.business_id].count += 1
-    })
-
-    return featList.map(f => {
-      const u = usersMap[f.user_id]
-      if (!u) return null
-      const rm = ratingMap[f.user_id]
-      return {
-        id: f.id, userId: f.user_id,
-        businessName: u.businessname || u.name || '',
-        phonenumber: u.phonenumber || '',
-        category: u.category || '',
-        region: u.region || '',
-        avatarUrl: u.avatar_url || null,
-        avgRating: rm ? Math.round((rm.sum / rm.count) * 10) / 10 : null,
-        reviewCount: rm?.count || 0,
-      }
-    }).filter((x): x is FeaturedBusiness => x !== null)
-  } catch { return [] }
 }
 
 export default async function RequestsPage() {

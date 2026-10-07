@@ -15,3 +15,7 @@ export function absoluteUrl(path: string): string {
   if (!path.startsWith('/')) return `${SITE_URL}/${path}`
   return `${SITE_URL}${path === '/' ? '' : path}`
 }
+
+/** 앱 스토어 링크 (App Store 올수리 id6760454320, Google Play com.ononcompany.allsuri) */
+export const APP_STORE_URL = 'https://apps.apple.com/kr/app/id6760454320'
+export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.ononcompany.allsuri'

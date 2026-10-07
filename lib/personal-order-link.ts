@@ -1,4 +1,6 @@
-import { supabase } from '@/lib/supabase'
+// 서버 전용 모듈입니다(라우트·서버 컴포넌트에서만 import). DB 보안 정책(RLS)과 무관하게 동작하도록
+// service role 로 읽고, 공개해도 되는 컬럼만 고릅니다.
+import { supabaseAdmin as supabase } from '@/lib/supabase-server'
 
 // 개인 오더 링크로 들어온 요청은 링크 주인 사업자에게만 배정됩니다.
 // 배정 대상은 항상 slug 로 서버에서 다시 조회하며, 클라이언트 입력을 신뢰하지 않습니다.
@@ -78,7 +80,7 @@ export async function getContractorPublicProfile(
 ): Promise<ContractorPublicProfile | null> {
   const { data, error } = await supabase
     .from('users')
-    .select('id, name, businessname, avatar_url, profile_image_url, bio, description, specialties, serviceareas, jobs_accepted_count')
+    .select('id, name, businessname, avatar_url, profile_image, specialties, serviceareas, jobs_accepted_count')
     .eq('id', contractorId)
     .maybeSingle()
 
@@ -93,9 +95,8 @@ export async function getContractorPublicProfile(
     displayName: businessName || name || '사업자',
     specialties: Array.isArray(row.specialties) ? (row.specialties as string[]) : [],
     serviceAreas: Array.isArray(row.serviceareas) ? (row.serviceareas as string[]) : [],
-    bio: (row.bio as string | null) ?? (row.description as string | null) ?? null,
-    avatarUrl:
-      (row.avatar_url as string | null) ?? (row.profile_image_url as string | null) ?? null,
+    bio: null,
+    avatarUrl: (row.avatar_url as string | null) || (row.profile_image as string | null) || null,
     completedJobs:
       typeof row.jobs_accepted_count === 'number' ? row.jobs_accepted_count : null,
   }

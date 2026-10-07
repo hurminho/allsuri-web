@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+import { countPublicBusinesses } from '@/lib/public-business'
 import BusinessList from './BusinessList'
 import { absoluteUrl } from '@/lib/site'
 
@@ -17,19 +17,8 @@ export const metadata: Metadata = {
 
 export const revalidate = 60
 
-async function getBusinessCount(): Promise<number> {
-  const { count } = await supabase
-    .from('users')
-    .select('id', { count: 'exact', head: true })
-    .eq('role', 'business')
-    .eq('businessstatus', 'approved')
-    .neq('name', '개발자')
-    .not('businessname', 'eq', '개발자')
-  return count ?? 0
-}
-
 export default async function BusinessPage() {
-  const total = await getBusinessCount()
+  const total = await countPublicBusinesses()
 
   return (
     <div className="min-h-screen bg-gray-50">

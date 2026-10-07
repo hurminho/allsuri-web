@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
 
 const PAGE_SIZE = 20
 
@@ -113,46 +112,14 @@ export default function BusinessList({ initialCount }: { initialCount: number })
   const [total, setTotal] = useState(initialCount)
 
   async function fetchPage(pageNum: number): Promise<{ items: Business[]; total: number }> {
-    const from = pageNum * PAGE_SIZE
-    const to = from + PAGE_SIZE - 1
-
-    const { data, error, count } = await supabase
-      .from('users')
-      .select(
-        'id, name, businessname, avatar_url, address, serviceareas, specialties, estimates_created_count, jobs_accepted_count',
-        { count: 'exact' }
-      )
-      .eq('role', 'business')
-      .eq('businessstatus', 'approved')
-      .neq('name', '개발자')
-      .not('businessname', 'eq', '개발자')
-      .order('jobs_accepted_count', { ascending: false, nullsFirst: false })
-      .range(from, to)
-
-    if (error || !data) return { items: [], total: 0 }
-
-    // 평점 일괄 조회
-    const ids = data.map((b) => b.id)
-    const { data: reviews } = await supabase
-      .from('business_reviews')
-      .select('business_id, rating')
-      .in('business_id', ids)
-
-    const ratingMap: Record<string, { sum: number; count: number }> = {}
-    for (const r of reviews || []) {
-      const bid = r.business_id
-      if (!ratingMap[bid]) ratingMap[bid] = { sum: 0, count: 0 }
-      ratingMap[bid].sum += r.rating
-      ratingMap[bid].count += 1
+    // users 테이블은 브라우저에서 직접 읽지 않습니다(민감 컬럼 보호). 서버가 공개 컬럼만 내려줍니다.
+    try {
+      const res = await fetch(`/api/businesses?page=${pageNum}&size=${PAGE_SIZE}`)
+      if (!res.ok) return { items: [], total: 0 }
+      return (await res.json()) as { items: Business[]; total: number }
+    } catch {
+      return { items: [], total: 0 }
     }
-
-    const items: Business[] = data.map((b) => ({
-      ...b,
-      avgRating: ratingMap[b.id] ? ratingMap[b.id].sum / ratingMap[b.id].count : 0,
-      reviewCount: ratingMap[b.id]?.count ?? 0,
-    }))
-
-    return { items, total: count ?? 0 }
   }
 
   useEffect(() => {
@@ -162,7 +129,6 @@ export default function BusinessList({ initialCount }: { initialCount: number })
       setHasMore(items.length === PAGE_SIZE)
       setLoading(false)
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function loadMore() {

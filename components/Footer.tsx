@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { SERVICE_GUIDES } from '@/lib/service-guides'
+import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/site'
 
 export default function Footer() {
   return (
@@ -41,13 +42,17 @@ export default function Footer() {
           <p className="text-sm text-gray-400 mb-3">사업자라면 앱으로 더 편리하게</p>
           <div className="flex flex-col gap-2">
             <a
-              href="https://apps.apple.com"
+              href={APP_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="bg-gray-700 hover:bg-gray-600 text-white text-sm px-4 py-2 rounded-lg text-center transition-colors"
             >
               App Store
             </a>
             <a
-              href="https://play.google.com"
+              href={PLAY_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="bg-gray-700 hover:bg-gray-600 text-white text-sm px-4 py-2 rounded-lg text-center transition-colors"
             >
               Google Play
@@ -56,7 +61,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="border-t border-gray-800 py-4 text-center text-xs text-gray-500">
-        © 2025 올수리. All rights reserved.
+        © {new Date().getFullYear()} 올수리. All rights reserved.
       </div>
     </footer>
   )

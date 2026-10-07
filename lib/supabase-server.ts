@@ -74,88 +74,80 @@ export type BusinessUserProfile = {
   jobs_accepted_count: number | null
   serviceareas: string[] | null
   specialties: string[] | null
+  /** 낙찰 가능 여부 (fn_business_can_act 와 같은 기준: 승인 + 사업자번호 또는 관리자 우회) */
+  canAct: boolean
 }
 
-function parseRatingValue(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string' && value.trim()) {
-    const n = Number(value)
-    return Number.isFinite(n) ? n : null
-  }
-  return null
+// users 실제 컬럼만 요청합니다. 예전에는 없는 컬럼(category·region·bio·description·
+// profile_image_url·representative_name)을 넣은 select 를 차례로 시도해 매번 쿼리가 실패했습니다.
+const BUSINESS_USER_COLS =
+  'id, name, role, businessname, business_repname, avatar_url, profile_image, address, serviceareas, specialties, ' +
+  'jobs_accepted_count, businessnumber, businessnumber_norm, businessstatus, business_verify_bypass'
+
+type BusinessUserRow = {
+  id: string
+  name: string | null
+  role: string | null
+  businessname: string | null
+  business_repname: string | null
+  avatar_url: string | null
+  profile_image: string | null
+  address: string | null
+  serviceareas: string[] | null
+  specialties: string[] | null
+  jobs_accepted_count: number | null
+  businessnumber: string | null
+  businessnumber_norm: string | null
+  businessstatus: string | null
+  business_verify_bypass: boolean | null
 }
 
-function normalizeBusinessUserRow(row: Record<string, unknown>): BusinessUserProfile {
+function joinList(v: string[] | null | undefined): string | null {
+  const s = Array.isArray(v) ? v.filter(Boolean).join(', ') : ''
+  return s || null
+}
+
+export function businessCanActFromRow(row: Pick<BusinessUserRow, 'role' | 'businessstatus' | 'businessnumber' | 'businessnumber_norm' | 'business_verify_bypass'>): boolean {
+  if (row.role !== 'business' || String(row.businessstatus || '') !== 'approved') return false
+  if (row.business_verify_bypass === true || row.businessnumber_norm) return true
+  return String(row.businessnumber || '').replace(/[^0-9]/g, '').length === 10
+}
+
+function toBusinessUserProfile(row: BusinessUserRow): BusinessUserProfile {
   return {
     id: String(row.id),
-    name: (row.name as string | null | undefined) ?? null,
-    businessname: (row.businessname ?? row.business_name ?? row.businessName) as string | null ?? null,
-    representative_name: ((row.representative_name ?? row.representativeName ?? row.owner_name ?? row.ownername) as string | null | undefined) ?? null,
-    category: (row.category as string | null | undefined) ?? null,
-    region: (row.region as string | null | undefined) ?? null,
-    address: (row.address as string | null | undefined) ?? null,
-    bio: ((row.bio ?? row.description) as string | null | undefined) ?? null,
-    avatar_url: ((row.avatar_url ?? row.profile_image_url) as string | null | undefined) ?? null,
-    businessnumber: ((row.businessnumber ?? row.business_number ?? row.businessNumber) as string | null | undefined) ?? null,
-    jobs_accepted_count: ((row.jobs_accepted_count ?? row.projects_awarded_count) as number | null | undefined) ?? null,
-    serviceareas: (row.serviceareas as string[] | null | undefined) ?? null,
-    specialties: (row.specialties as string[] | null | undefined) ?? null,
+    name: row.name ?? null,
+    businessname: row.businessname ?? null,
+    representative_name: row.business_repname ?? null,
+    category: joinList(row.specialties),
+    region: joinList(row.serviceareas),
+    address: row.address ?? null,
+    bio: null,
+    avatar_url: row.avatar_url || row.profile_image || null,
+    businessnumber: row.businessnumber ?? null,
+    jobs_accepted_count: row.jobs_accepted_count ?? null,
+    serviceareas: row.serviceareas ?? null,
+    specialties: row.specialties ?? null,
+    canAct: businessCanActFromRow(row),
   }
 }
 
-function mergeRatingsIntoMap(
-  ids: string[],
-  rows: Record<string, unknown>[] | null | undefined,
-  ratingMap: Record<string, { avg: number | null; count: number }>,
-) {
-  const buckets: Record<string, number[]> = {}
-  for (const row of rows || []) {
-    const bizId = pickRowField<string>(row, 'business_id', 'businessid', 'businessId', 'user_id', 'userid')
-    const rating = parseRatingValue(row.rating ?? row.score ?? row.stars)
-    if (!bizId || !ids.includes(bizId) || rating === null) continue
-    if (!buckets[bizId]) buckets[bizId] = []
-    buckets[bizId].push(rating)
-  }
-  ids.forEach((id) => {
-    const arr = buckets[id] || []
-    if (arr.length === 0) return
-    ratingMap[id] = {
-      avg: Math.round((arr.reduce((s, n) => s + n, 0) / arr.length) * 10) / 10,
-      count: arr.length,
-    }
-  })
-}
-
-/** users 테이블 컬럼 불일치 시에도 사업자 프로필을 조회 (존재하는 컬럼만 순차 시도) */
 export async function fetchBusinessUsersByIds(ids: string[]): Promise<Record<string, BusinessUserProfile>> {
   if (ids.length === 0) return {}
-
-  const selects = [
-    'id, name, businessname, representative_name, owner_name, avatar_url, address, serviceareas, specialties, jobs_accepted_count, category, bio, region, description, profile_image_url',
-    'id, name, businessname, avatar_url, address, serviceareas, specialties, jobs_accepted_count, category, bio, region, description, profile_image_url',
-    'id, name, businessname, phonenumber, category, region, description, profile_image_url, projects_awarded_count',
-    'id, name, businessname, category, region',
-    'id, name, businessname',
-  ]
-
-  for (const select of selects) {
-    const { data, error } = await supabaseAdmin.from('users').select(select).in('id', ids)
-    if (error) {
-      console.warn('[fetchBusinessUsersByIds] query failed:', select, error.message)
-      continue
-    }
-    const map: Record<string, BusinessUserProfile> = {}
-    for (const row of data || []) {
-      const profile = normalizeBusinessUserRow(row as unknown as Record<string, unknown>)
-      map[profile.id] = profile
-    }
-    return map
+  const { data, error } = await supabaseAdmin.from('users').select(BUSINESS_USER_COLS).in('id', ids)
+  if (error) {
+    console.warn('[fetchBusinessUsersByIds] query failed:', error.message)
+    return {}
   }
-
-  return {}
+  const map: Record<string, BusinessUserProfile> = {}
+  for (const row of (data || []) as unknown as BusinessUserRow[]) {
+    const profile = toBusinessUserProfile(row)
+    map[profile.id] = profile
+  }
+  return map
 }
 
-/** business_reviews 컬럼명·rating 타입 차이를 흡수 */
+/** 사업자별 평점 (business_reviews 뷰 = order_reviews) */
 export async function fetchBusinessRatingsByIds(
   ids: string[],
 ): Promise<Record<string, { avg: number | null; count: number }>> {
@@ -163,30 +155,27 @@ export async function fetchBusinessRatingsByIds(
   ids.forEach((id) => { ratingMap[id] = { avg: null, count: 0 } })
   if (ids.length === 0) return ratingMap
 
-  for (const businessIdColumn of ['business_id', 'businessid', 'user_id', 'userid'] as const) {
-    const { data, error } = await supabaseAdmin
-      .from('business_reviews')
-      .select('*')
-      .in(businessIdColumn, ids)
-    if (error) {
-      console.warn('[fetchBusinessRatingsByIds] query failed:', businessIdColumn, error.message)
-      continue
-    }
-    mergeRatingsIntoMap(ids, (data || []) as Record<string, unknown>[], ratingMap)
-    if (ids.some((id) => ratingMap[id].count > 0)) return ratingMap
+  const { data, error } = await supabaseAdmin
+    .from('business_reviews')
+    .select('business_id, rating')
+    .in('business_id', ids)
+  if (error) {
+    console.warn('[fetchBusinessRatingsByIds] query failed:', error.message)
+    return ratingMap
   }
-
-  // 컬럼명 불일치 시 ID별 개별 조회 (사업자 프로필 페이지와 동일)
+  const buckets: Record<string, number[]> = {}
+  for (const row of (data || []) as { business_id: string; rating: number | null }[]) {
+    if (!row.business_id || typeof row.rating !== 'number') continue
+    ;(buckets[row.business_id] ||= []).push(row.rating)
+  }
   for (const id of ids) {
-    if (ratingMap[id].count > 0) continue
-    const { data, error } = await supabaseAdmin
-      .from('business_reviews')
-      .select('*')
-      .eq('business_id', id)
-    if (error) continue
-    mergeRatingsIntoMap([id], (data || []) as Record<string, unknown>[], ratingMap)
+    const arr = buckets[id] || []
+    if (arr.length === 0) continue
+    ratingMap[id] = {
+      avg: Math.round((arr.reduce((s, n) => s + n, 0) / arr.length) * 10) / 10,
+      count: arr.length,
+    }
   }
-
   return ratingMap
 }
 

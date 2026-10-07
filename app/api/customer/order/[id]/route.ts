@@ -4,10 +4,10 @@ import {
   normalizePhone,
   fetchBusinessUsersByIds,
   fetchBusinessRatingsByIds,
-  pickRowField,
   type BusinessUserProfile,
 } from '@/lib/supabase-server'
 import { resolvePersonName } from '@/lib/business-profile'
+import { customerCanConfirmCompletion } from '@/lib/web-order-rules'
 
 async function verifyOrder(orderId: string, phone: string, password: string) {
   const { data } = await supabaseAdmin
@@ -23,33 +23,38 @@ async function verifyOrder(orderId: string, phone: string, password: string) {
   return data
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// 전화번호·비밀번호는 본문으로 받습니다. 예전에는 GET 쿼리 문자열(?phone=&pwd=)로 보내
+// 서버·프록시 접속 로그와 브라우저 기록에 그대로 남았습니다.
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: orderId } = await params
-  const phone = normalizePhone(req.nextUrl.searchParams.get('phone') || '')
-  const password = req.nextUrl.searchParams.get('pwd') || ''
+  const body = (await req.json().catch(() => ({}))) as { phone?: string; password?: string }
+  const phone = normalizePhone(String(body.phone || ''))
+  const password = String(body.password || '')
 
   if (!phone || !password) return NextResponse.json({ error: '인증 정보가 필요합니다.' }, { status: 401 })
 
   const order = await verifyOrder(orderId, phone, password)
   if (!order) return NextResponse.json({ error: '인증 실패 또는 주문을 찾을 수 없습니다.' }, { status: 401 })
 
-  // 연결된 marketplace_listing 조회 (web_order_id 컬럼이 있는 경우)
-  let listingId: string | null = null
-  let listingStatus: string | null = null
-  let selectedBidderId: string | null = null
-  try {
-    const { data: listing } = await supabaseAdmin
-      .from('marketplace_listings')
-      .select('id, status, bid_count, selected_bidder_id, claimed_by')
-      .eq('web_order_id', orderId)
-      .maybeSingle()
-    listingId = listing?.id || null
-    listingStatus = listing?.status || null
-    selectedBidderId = listing?.selected_bidder_id || listing?.claimed_by || null
-  } catch { /* web_order_id 컬럼 없으면 무시 */ }
+  // 연결된 marketplace_listing
+  const { data: listing } = await supabaseAdmin
+    .from('marketplace_listings')
+    .select('id, status, selected_bidder_id, claimed_by')
+    .eq('web_order_id', orderId)
+    .maybeSingle()
+  const listingId: string | null = listing?.id || null
+  const listingStatus: string | null = listing?.status || null
+  const selectedBidderId: string | null = listing?.selected_bidder_id || listing?.claimed_by || null
 
-  // 낙찰 여부 판단 강화: orders.isAwarded(camelCase/lowercase) OR listing.status가 진행 단계 OR 선택된 입찰자 존재
-  const orderAwardedFlag = !!(order.isAwarded ?? order.isawarded)
+  // 낙찰 뒤 앱 공사 상태 (사업자가 '공사 완료'를 알렸는지)
+  let jobStatus: string | null = null
+  if (order.matchedJobId) {
+    const { data: job } = await supabaseAdmin.from('jobs').select('status').eq('id', order.matchedJobId).maybeSingle()
+    jobStatus = job?.status || null
+  }
+
+  // 낙찰 여부: orders.isAwarded OR listing.status가 진행 단계 OR 선택된 입찰자 존재
+  const orderAwardedFlag = !!order.isAwarded
   const listingAwarded = !!(listingStatus && ['assigned', 'in_progress', 'awaiting_confirmation', 'completed'].includes(listingStatus))
   const isOrderAwarded = orderAwardedFlag || listingAwarded || !!selectedBidderId
 
@@ -67,24 +72,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (listingId) {
     const query = supabaseAdmin
       .from('order_bids')
-      .select('*')
+      .select('id, bidder_id, message, status, bid_amount, estimated_days, created_at')
       .eq('listing_id', listingId)
       .order('created_at', { ascending: true })
     const { data: bidsData } = isOrderAwarded
       ? await query.eq('status', 'selected')
       : await query
-    bids = (bidsData || []).map((raw) => {
-      const row = raw as Record<string, unknown>
-      return {
-        id: String(row.id),
-        bidder_id: String(pickRowField<string>(row, 'bidder_id', 'bidderId', 'bidderid', 'user_id', 'userid') || ''),
-        message: pickRowField<string>(row, 'message'),
-        status: String(pickRowField<string>(row, 'status') || ''),
-        bid_amount: pickRowField<number>(row, 'bid_amount', 'bidAmount', 'amount'),
-        estimated_days: pickRowField<number>(row, 'estimated_days', 'estimatedDays'),
-        created_at: String(pickRowField<string>(row, 'created_at', 'createdAt', 'createdat') || ''),
-      }
-    }).filter((b) => b.id && b.bidder_id)
+    bids = ((bidsData || []) as BidRow[]).filter((b) => b.id && b.bidder_id)
   }
 
   const bidderIds = [...new Set(bids.map((b) => b.bidder_id).filter(Boolean))]
@@ -106,6 +100,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       jobs_accepted_count: null,
       serviceareas: null,
       specialties: null,
+      canAct: false,
     }
     const rawBiz = (biz.businessname || '').trim()
     const rawName = resolvePersonName(biz)
@@ -134,12 +129,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       status: b.status,
       isAwarded: b.status === 'selected',
       isBid: true,
+      // 승인·사업자번호 확인이 끝난 업체만 낙찰할 수 있습니다(B2B 낙찰과 같은 기준).
+      canAward: biz.canAct,
     }
   })
 
   // 낙찰 사업자: orders.technicianId 우선, 없으면 listing.selected_bidder_id, 그것도 없으면 selected 입찰자
   let awardedBusiness = null
-  const techId = order.technicianId || order.technicianid || selectedBidderId ||
+  const techId = order.technicianId || selectedBidderId ||
     (bids.find(b => b.status === 'selected')?.bidder_id ?? null)
   if (techId) {
     const bidders = await fetchBusinessUsersByIds([techId])
@@ -150,15 +147,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     order: {
       id: order.id, title: order.title, description: order.description,
       status: order.status, category: order.category, address: order.address,
-      visitDate: order.visitDate || order.visitdate,
-      createdAt: order.createdAt || order.createdat,
+      visitDate: order.visitDate,
+      createdAt: order.createdAt,
       isAwarded: isOrderAwarded,
-      awardedEstimateId: order.awardedEstimateId || order.awardedestimatedid,
+      awardedEstimateId: order.awardedEstimateId,
       images: order.images || [],
-      adminRating: order.adminRating || order.adminrating,
-      adminRatingComment: order.adminRatingComment || order.adminratingcomment,
-      matchedJobId: order.matchedJobId || order.matchedjobid,
+      adminRating: order.adminRating,
+      adminRatingComment: order.adminRatingComment,
+      matchedJobId: order.matchedJobId,
       listingId,
+      // 사업자가 앱에서 '공사 완료'를 알렸는지, 고객이 지금 완료 확인을 할 수 있는지
+      workDoneReported: jobStatus === 'awaiting_confirmation' || jobStatus === 'completed',
+      canConfirmCompletion: customerCanConfirmCompletion(
+        { status: order.status, isAwarded: isOrderAwarded, visitDate: order.visitDate },
+        jobStatus,
+      ),
     },
     estimates,
     awardedBusiness,

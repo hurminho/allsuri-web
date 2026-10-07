@@ -14,7 +14,9 @@ function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(
+    searchParams.get('error') === 'forbidden' ? '관리자 권한이 없습니다.' : '',
+  )
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -33,11 +35,11 @@ function LoginForm() {
     // role 확인
     const { data: userData } = await supabase
       .from('users')
-      .select('role')
+      .select('role, is_admin')
       .eq('id', data.user.id)
       .single()
 
-    if (!userData || userData.role !== 'admin') {
+    if (!userData || !(userData.is_admin || userData.role === 'admin')) {
       await supabase.auth.signOut()
       setError('관리자 권한이 없습니다.')
       setLoading(false)
