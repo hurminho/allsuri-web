@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { splitAddressRegion } from '@/lib/address-region'
+import { sendTelegram, telegramNewWebOrder } from '@/lib/telegram'
 
 // 고객 견적 폼 제출:
 // 1. orders 테이블에 저장 (B2C 고객 레코드)
 // 2. marketplace_listings 테이블에도 저장 (B2B와 동일한 앱 오더 목록)
+//    (orders 저장 직후 운영자 개인 텔레그램으로도 알림 — lib/telegram.ts)
 // 3. 알림: 승인된 사업자에게 notifications INSERT.
 //    푸시(FCM)는 notifications INSERT 웹훅(send-push-webhook)이 한 건씩 보냅니다.
 //    → 응답 반환 전에 동기적으로 실행 (fire-and-forget 안 씀)
@@ -206,6 +208,18 @@ export async function POST(req: NextRequest) {
     }
 
     const orderId = orderRow.id
+
+    await sendTelegram(telegramNewWebOrder({
+      orderId,
+      title,
+      category,
+      address: fullAddress,
+      visitDate,
+      customerName,
+      customerPhone: normalizedPhone,
+      description,
+      imageCount: Array.isArray(imageUrls) ? imageUrls.length : 0,
+    }))
 
     // ── 2. marketplace_listings 에도 저장 ────────────────────────────
     // 사업자가 앱 오더 목록에서 볼 수 있도록
