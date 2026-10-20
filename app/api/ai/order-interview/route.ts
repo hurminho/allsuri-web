@@ -27,6 +27,7 @@ import {
   shouldFinalizeInterview,
 } from '@/lib/ai-interview-script'
 import { openaiConfig } from '@/lib/openai-config'
+import { TRADE_GROUPS, groupOf } from '@/lib/trade-categories'
 
 export const runtime = 'nodejs'
 
@@ -54,7 +55,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '한 줄 설명은 5~500자로 입력해 주세요.' }, { status: 400 })
   }
 
-  const category = inferCategory(initialText)
+  // 질문 대본은 세부 주제(누수·화장실·배관…)로 고르고, 저장하는 공종은 대분류로 맞춥니다.
+  const category = groupOf(inferCategory(initialText))
 
   if (!shouldFinalizeInterview(initialText, answers)) {
     const nextQuestion = nextScriptQuestion(initialText, answers)
@@ -110,8 +112,11 @@ export async function POST(req: NextRequest) {
       initialText,
       answers: answers.slice(0, 5),
       photoCount: photoUrls.length,
-      allowedCategories: catalog?.categories ?? [...CATEGORIES],
-      allowedSubcategories: Array.from(new Set((catalog?.trades ?? []).map((t) => t.subcategory))),
+      allowedCategories: [...CATEGORIES],
+      allowedSubcategories: Array.from(new Set([
+        ...(catalog?.trades ?? []).map((t) => t.subcategory),
+        ...TRADE_GROUPS.flatMap((g) => g.items),
+      ])),
     }),
     '위 두 요구사항을 하나의 JSON 객체로 합쳐서 반환하라. 금액·가격·견적가는 어떤 키에도 넣지 마라.',
   ].join('\n')

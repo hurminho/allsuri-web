@@ -39,7 +39,7 @@ export type ServiceGuide = {
 export const SERVICE_GUIDES: ServiceGuide[] = [
   {
     slug: 'leak',
-    category: '누수',
+    category: '누수·방수',
     navLabel: '누수',
     title: '누수 탐지·보수 견적, 무엇을 확인해야 할까요? | 올수리',
     description:
@@ -123,7 +123,7 @@ export const SERVICE_GUIDES: ServiceGuide[] = [
   },
   {
     slug: 'plumbing',
-    category: '배관',
+    category: '하수구·막힘',
     navLabel: '배관·막힘',
     title: '배관 막힘 수리 견적과 확인 사항 | 올수리',
     description:
@@ -201,7 +201,7 @@ export const SERVICE_GUIDES: ServiceGuide[] = [
   },
   {
     slug: 'bathroom',
-    category: '화장실',
+    category: '주방·욕실 설비',
     navLabel: '화장실',
     title: '화장실 수리·부분 교체 견적 확인 사항 | 올수리',
     description:
@@ -278,7 +278,7 @@ export const SERVICE_GUIDES: ServiceGuide[] = [
   },
   {
     slug: 'waterproofing',
-    category: '방수',
+    category: '누수·방수',
     navLabel: '방수',
     title: '방수 공사 견적, 어디를 먼저 봐야 할까요? | 올수리',
     description:

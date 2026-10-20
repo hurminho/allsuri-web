@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { supabase, CATEGORIES, CATEGORY_ICONS, isCategory } from '@/lib/supabase'
+import { supabase, CATEGORIES, CATEGORY_ICONS, isCategory, normalizeCategory } from '@/lib/supabase'
+import { tradeGroup } from '@/lib/trade-categories'
 import type { PriceEstimateResponse } from '@/lib/price-engine'
 import PriceEstimateCard from '@/components/PriceEstimateCard'
 
@@ -27,6 +28,7 @@ const PROPERTY_OPTIONS = [
 
 interface FormData {
   category: string
+  subcategory: string
   title: string
   description: string
   address: string
@@ -79,7 +81,8 @@ function StepIndicator({ current }: { current: Step }) {
 
 export default function RequestForm() {
   const searchParams = useSearchParams()
-  const initialCategory = searchParams.get('category') || '기타'
+  // 예전 링크(?category=누수 등)도 새 대분류로 맞춥니다.
+  const initialCategory = normalizeCategory(searchParams.get('category') || '기타')
 
   const [step, setStep] = useState<Step>(1)
   const [loading, setLoading] = useState(false)
@@ -96,6 +99,7 @@ export default function RequestForm() {
 
   const [form, setForm] = useState<FormData>({
     category: isCategory(initialCategory) ? initialCategory : '기타',
+    subcategory: '',
     title: '',
     description: '',
     address: '',
@@ -129,6 +133,7 @@ export default function RequestForm() {
           body: JSON.stringify({
             tradeId: tradeId || undefined,
             category: form.category,
+            subcategory: form.subcategory || undefined,
             text: [form.title, form.description].filter(Boolean).join('\n').slice(0, 2000),
             address: form.address || undefined,
             urgency: form.urgency || undefined,
@@ -149,6 +154,7 @@ export default function RequestForm() {
     step,
     tradeId,
     form.category,
+    form.subcategory,
     form.title,
     form.description,
     form.address,
@@ -267,7 +273,7 @@ export default function RequestForm() {
           imageUrls,
           // 구조화 정보 + 가격 스냅샷 (금액은 전부 가격 엔진 값)
           tradeId: tradeId || price?.trade?.id || null,
-          subcategory: price?.trade?.subcategory || null,
+          subcategory: form.subcategory || price?.trade?.subcategory || null,
           urgency: form.urgency || null,
           propertyType: form.propertyType || null,
           priceEngineVersion: price?.engineVersion || null,
@@ -345,7 +351,7 @@ export default function RequestForm() {
             setSubmitted(false)
             setStep(1)
             setForm({
-              category: '기타', title: '', description: '', address: '',
+              category: '기타', subcategory: '', title: '', description: '', address: '',
               addressDetail: '', visitDate: '', name: '', phone: '', email: '',
               pin: '', urgency: '', propertyType: '', images: [], imagePreviewUrls: [],
             })
@@ -376,12 +382,12 @@ export default function RequestForm() {
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               수리 종류 <span className="text-red-500">*</span>
             </label>
-            <div className="grid grid-cols-4 md:grid-cols-7 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
               {CATEGORIES.map((cat) => (
                 <button
                   key={cat}
                   type="button"
-                  onClick={() => update('category', cat)}
+                  onClick={() => setForm((prev) => ({ ...prev, category: cat, subcategory: '' }))}
                   className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 text-sm font-medium transition-all ${
                     form.category === cat
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
@@ -394,6 +400,30 @@ export default function RequestForm() {
               ))}
             </div>
           </div>
+
+          {(tradeGroup(form.category)?.items.length ?? 0) > 0 && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                세부 작업 <span className="text-gray-400 font-normal">(선택)</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {tradeGroup(form.category)!.items.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => update('subcategory', form.subcategory === item ? '' : item)}
+                    className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-all ${
+                      form.subcategory === item
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 text-gray-600 hover:border-blue-300'
+                    }`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">

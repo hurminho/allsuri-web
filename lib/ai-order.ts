@@ -1,12 +1,7 @@
-export const CATEGORIES = [
-  '누수',
-  '화장실',
-  '배관',
-  '방수',
-  '주방',
-  '리모델링',
-  '기타',
-] as const
+import { TRADE_GROUP_NAMES, groupOf } from '@/lib/trade-categories'
+
+// AI 가 고를 수 있는 공종(대분류). 앱·웹과 같은 목록입니다.
+export const CATEGORIES = TRADE_GROUP_NAMES
 
 export type QuestionType =
   | 'single_choice'
@@ -218,8 +213,10 @@ function asStringArray(v: unknown): string[] {
 }
 
 function normalizeCategory(value: string): string {
-  const hit = CATEGORIES.find((c) => value.includes(c))
-  return hit || '기타'
+  const v = value.trim()
+  if (CATEGORIES.includes(v)) return v
+  const hit = CATEGORIES.find((c) => c !== '기타' && v.includes(c))
+  return hit || groupOf(v)
 }
 
 function normalizeType(value: string): QuestionType {

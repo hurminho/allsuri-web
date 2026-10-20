@@ -114,7 +114,7 @@ export default async function Home() {
       <section className="py-14 px-4 bg-white">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl font-bold text-center text-gray-800 mb-8">어떤 수리가 필요하신가요?</h2>
-          <div className="grid grid-cols-4 md:grid-cols-7 gap-3">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
             {CATEGORIES.map((cat) => (
               <Link
                 key={cat}

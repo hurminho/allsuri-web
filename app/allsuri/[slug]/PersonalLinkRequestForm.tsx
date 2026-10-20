@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase, CATEGORIES } from '@/lib/supabase'
+import { groupOf } from '@/lib/trade-categories'
 
 type Step = 1 | 2 | 3
 
@@ -31,7 +32,10 @@ type Props = {
 }
 
 export default function PersonalLinkRequestForm({ slug, contractorName, categories }: Props) {
-  const options = categories.length > 0 ? categories : [...CATEGORIES]
+  // 링크 공종은 대분류로 맞춥니다(예전 값·세부 공종이 저장돼 있어도).
+  const options = categories.length > 0
+    ? Array.from(new Set(categories.map((c) => groupOf(c))))
+    : [...CATEGORIES]
 
   const [step, setStep] = useState<Step>(1)
   const [loading, setLoading] = useState(false)

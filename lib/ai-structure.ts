@@ -6,6 +6,7 @@
 
 import { CATEGORIES } from './ai-order'
 import type { PriceCatalog } from './price-engine'
+import { priceTradeGroup } from '@/lib/trade-categories'
 
 export type StructuredIntake = {
   category: string | null
@@ -148,7 +149,7 @@ export function matchTrade(
   subcategoryRaw: string | null,
 ): SubcategoryMatch {
   const pool = category
-    ? catalog.trades.filter((t) => t.category === category)
+    ? catalog.trades.filter((t) => t.category === category || priceTradeGroup(t) === category)
     : catalog.trades
   const asCandidate = (t: { id: string; category: string; subcategory: string }) => ({
     tradeId: t.id,
@@ -236,7 +237,9 @@ export function parseStructuredIntake(
     if (trade) {
       allowedSymptomTags = trade.symptomTags
     } else {
-      const pool = category ? catalog.trades.filter((t) => t.category === category) : catalog.trades
+      const pool = category
+        ? catalog.trades.filter((t) => t.category === category || priceTradeGroup(t) === category)
+        : catalog.trades
       allowedSymptomTags = Array.from(new Set(pool.flatMap((t) => t.symptomTags)))
     }
   } else {

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { supabase, CATEGORIES } from '@/lib/supabase'
+import { groupOf, priceTradeGroup } from '@/lib/trade-categories'
 import type { FinalOrderDraft, InterviewAnswer, NextQuestion } from '@/lib/ai-order'
 import type { StructuredIntake } from '@/lib/ai-structure'
 import type {
@@ -84,13 +85,11 @@ export default function AiInterview() {
     [answers.length, phase],
   )
 
-  const categoryOptions = useMemo(() => {
-    const fromCatalog = (catalog?.trades || []).map((t) => t.category)
-    return Array.from(new Set([...CATEGORIES, ...fromCatalog]))
-  }, [catalog])
+  // 공종은 대분류 목록만 씁니다. 가격 카탈로그 공정은 대분류로 묶어 보여 줍니다.
+  const categoryOptions = CATEGORIES
 
   const tradesForCategory = useMemo(
-    () => (catalog?.trades || []).filter((t) => t.category === category),
+    () => (catalog?.trades || []).filter((t) => priceTradeGroup(t) === category),
     [catalog, category],
   )
 
@@ -140,7 +139,7 @@ export default function AiInterview() {
         const st = (json.structured || null) as StructuredIntake | null
         setDraft(fo)
         setTitle(fo.title)
-        setCategory(st?.category || fo.category || '기타')
+        setCategory(groupOf(st?.category || fo.category || '기타'))
         setSubcategory(st?.subcategory || fo.subcategory || '')
         setDescription(
           fo.description.includes('[방문 시') || fo.description.includes('[확인된 내용]')
@@ -219,7 +218,7 @@ export default function AiInterview() {
     const trade = (catalog?.trades || []).find((t) => t.id === id)
     setTradeId(id)
     if (trade) {
-      setCategory(trade.category)
+      setCategory(priceTradeGroup(trade))
       setSubcategory(trade.subcategory)
     }
     track('ai_order_trade_selected', { sessionId, tradeId: id })

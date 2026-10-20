@@ -1,35 +1,26 @@
 import { createClient } from '@supabase/supabase-js'
+import { TRADE_GROUPS, TRADE_GROUP_NAMES, groupOf } from '@/lib/trade-categories'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-export const CATEGORIES = [
-  '누수',
-  '화장실',
-  '배관',
-  '방수',
-  '주방',
-  '리모델링',
-  '기타',
-] as const
+// 공종 대분류. 목록은 lib/trade-categories.ts 한 곳에서 정합니다(앱과 같은 목록).
+export const CATEGORIES: readonly string[] = TRADE_GROUP_NAMES
 
-export type Category = (typeof CATEGORIES)[number]
+export type Category = string
 
 export function isCategory(value: string): value is Category {
-  return (CATEGORIES as readonly string[]).includes(value)
+  return CATEGORIES.includes(value)
 }
 
-export const CATEGORY_ICONS: Record<Category, string> = {
-  '누수': '💧',
-  '화장실': '🚿',
-  '배관': '🔩',
-  '방수': '💧',
-  '주방': '🍳',
-  '리모델링': '🏠',
-  '기타': '🛠️',
-}
+/** 예전 분류·세부 공종 값도 대분류로 맞춥니다(예: ?category=누수 → 누수·방수). */
+export const normalizeCategory = groupOf
+
+export const CATEGORY_ICONS: Record<string, string> = Object.fromEntries(
+  TRADE_GROUPS.map((g) => [g.name, g.icon]),
+)
 
 export type Order = {
   id?: string
