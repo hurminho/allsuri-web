@@ -3,7 +3,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { supabase, CATEGORIES, CATEGORY_ICONS } from '@/lib/supabase'
 import { getFeaturedBusinesses, websiteLabel, type FeaturedBusiness } from '@/lib/public-business'
-import { SERVICE_GUIDES } from '@/lib/service-guides'
+import { GUIDE_GROUPS, guideLinkLabel } from '@/lib/service-guides'
 import { SITE_NAME, absoluteUrl } from '@/lib/site'
 
 export const metadata: Metadata = {
@@ -60,7 +60,7 @@ export default async function Home() {
       name: SITE_NAME,
       url: absoluteUrl('/'),
       logo: absoluteUrl('/app-icon.png'),
-      description: '집수리 전문가와 고객을 연결하는 견적 매칭 플랫폼',
+      description: '집수리·설비·청소 전문 업체와 고객을 연결하는 견적 매칭 플랫폼',
       areaServed: { '@type': 'Country', name: '대한민국' },
     },
   ]
@@ -95,12 +95,12 @@ export default async function Home() {
           </div>
           <p className="text-blue-200 text-sm font-medium mb-3 tracking-wider uppercase">앱 설치 없이 · 회원가입 없이 · 무료로</p>
           <h1 className="text-3xl md:text-5xl font-bold leading-tight mb-5">
-            집수리, 이제<br />
+            집수리·설비·청소 견적,<br />
             <span className="text-yellow-300">올수리</span>에서 해결하세요
           </h1>
           <p className="text-blue-100 text-lg mb-8 leading-relaxed">
-            누수·배관·방수·리모델링 등 등록된 전문 업체가<br className="hidden md:block" />
-            직접 견적서를 보내드립니다
+            누수·하수구 막힘·보일러부터 입주청소·에어컨 청소까지<br className="hidden md:block" />
+            등록된 전문 업체가 직접 견적서를 보내드립니다
           </p>
           <Link
             href="/requests/ai"
@@ -116,7 +116,7 @@ export default async function Home() {
       {/* Categories */}
       <section className="py-14 px-4 bg-white">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold text-center text-gray-800 mb-8">어떤 수리가 필요하신가요?</h2>
+          <h2 className="text-2xl font-bold text-center text-gray-800 mb-8">어떤 집수리·설비·청소가 필요하신가요?</h2>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
             {CATEGORIES.map((cat) => (
               <Link
@@ -238,22 +238,27 @@ export default async function Home() {
         <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl font-bold text-center text-gray-800 mb-2">어떤 작업이 필요한지 모르시겠다면</h2>
           <p className="text-center text-gray-500 mb-10">증상과 확인할 점부터 정리해 두었습니다</p>
-          <div className="grid sm:grid-cols-2 gap-4">
-            {SERVICE_GUIDES.map((guide) => (
-              <Link
-                key={guide.slug}
-                href={`/services/${guide.slug}`}
-                className="bg-white rounded-2xl border border-gray-200 hover:border-blue-400 hover:shadow-sm p-5 transition-all"
-              >
-                <h3 className="font-bold text-gray-900 mb-1.5">{guide.navLabel} 수리 안내</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">{guide.description}</p>
-                <span className="inline-block text-sm text-blue-600 font-semibold mt-3">자세히 보기 →</span>
-              </Link>
-            ))}
-          </div>
+          {GUIDE_GROUPS.map((group) => (
+            <div key={group.kind} className="mb-8">
+              <h3 className="text-lg font-bold text-gray-800 mb-3">{group.title} 견적</h3>
+              <div className="grid sm:grid-cols-2 gap-4">
+                {group.guides.map((guide) => (
+                  <Link
+                    key={guide.slug}
+                    href={`/services/${guide.slug}`}
+                    className="bg-white rounded-2xl border border-gray-200 hover:border-blue-400 hover:shadow-sm p-5 transition-all"
+                  >
+                    <h4 className="font-bold text-gray-900 mb-1.5">{guideLinkLabel(guide)}</h4>
+                    <p className="text-sm text-gray-500 leading-relaxed">{guide.description}</p>
+                    <span className="inline-block text-sm text-blue-600 font-semibold mt-3">자세히 보기 →</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
           <div className="text-center mt-8">
             <Link href="/services" className="text-blue-600 font-semibold hover:underline">
-              수리 안내 전체 보기 →
+              설비·청소 안내 전체 보기 →
             </Link>
           </div>
         </div>

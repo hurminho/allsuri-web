@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { SERVICE_GUIDES, getServiceGuide } from '@/lib/service-guides'
+import { SERVICE_GUIDES, getServiceGuide, guideLinkLabel, guideRequestHref } from '@/lib/service-guides'
 import { absoluteUrl, SITE_NAME } from '@/lib/site'
 
 type Props = { params: Promise<{ slug: string }> }
@@ -21,6 +21,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: guide.title,
     description: guide.description,
+    keywords: [guide.navLabel, `${guide.navLabel} 견적`, `${guide.navLabel} 업체`, `${guide.navLabel} 비용`, ...guide.aka],
     alternates: { canonical: url },
     openGraph: {
       title: guide.title,
@@ -37,14 +38,15 @@ export default async function ServiceGuidePage({ params }: Props) {
   if (!guide) notFound()
 
   const url = absoluteUrl(`/services/${guide.slug}`)
-  const requestHref = `/requests?category=${encodeURIComponent(guide.category)}`
+  const requestHref = guideRequestHref(guide)
 
   const jsonLd = [
     {
       '@context': 'https://schema.org',
       '@type': 'Service',
-      name: `${guide.navLabel} 수리 견적 매칭`,
+      name: `${guide.navLabel} 견적 매칭`,
       serviceType: guide.navLabel,
+      alternateName: guide.aka,
       description: guide.description,
       url,
       areaServed: { '@type': 'Country', name: '대한민국' },
@@ -59,9 +61,18 @@ export default async function ServiceGuidePage({ params }: Props) {
       '@type': 'BreadcrumbList',
       itemListElement: [
         { '@type': 'ListItem', position: 1, name: '홈', item: absoluteUrl('/') },
-        { '@type': 'ListItem', position: 2, name: '수리 안내', item: absoluteUrl('/services') },
+        { '@type': 'ListItem', position: 2, name: '설비·청소 안내', item: absoluteUrl('/services') },
         { '@type': 'ListItem', position: 3, name: guide.navLabel, item: url },
       ],
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: guide.faqs.map((faq) => ({
+        '@type': 'Question',
+        name: faq.question,
+        acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+      })),
     },
   ]
 
@@ -78,7 +89,7 @@ export default async function ServiceGuidePage({ params }: Props) {
         <nav aria-label="현재 위치" className="text-sm text-gray-500 mb-5">
           <Link href="/" className="hover:text-blue-600">홈</Link>
           <span className="mx-1.5">›</span>
-          <Link href="/services" className="hover:text-blue-600">수리 안내</Link>
+          <Link href="/services" className="hover:text-blue-600">설비·청소 안내</Link>
           <span className="mx-1.5">›</span>
           <span className="text-gray-700">{guide.navLabel}</span>
         </nav>
@@ -86,7 +97,18 @@ export default async function ServiceGuidePage({ params }: Props) {
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 leading-snug mb-4">
           {guide.h1}
         </h1>
-        <p className="text-gray-600 leading-relaxed mb-8">{guide.intro}</p>
+        <p className="text-gray-600 leading-relaxed mb-6">{guide.intro}</p>
+
+        <div className="mb-8">
+          <p className="text-sm font-semibold text-gray-700 mb-2">이런 작업도 함께 요청할 수 있어요</p>
+          <ul className="flex flex-wrap gap-2">
+            {guide.aka.map((term) => (
+              <li key={term} className="text-sm text-gray-600 bg-white border border-gray-200 rounded-full px-3 py-1">
+                {term}
+              </li>
+            ))}
+          </ul>
+        </div>
 
         <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-10">
           <p className="text-sm text-blue-900 leading-relaxed mb-3">
@@ -201,7 +223,7 @@ export default async function ServiceGuidePage({ params }: Props) {
         </section>
 
         <section className="mb-10">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">다른 수리 안내</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-4">다른 설비·청소 견적 안내</h2>
           <div className="grid sm:grid-cols-3 gap-3">
             {others.map((other) => (
               <Link
@@ -209,7 +231,7 @@ export default async function ServiceGuidePage({ params }: Props) {
                 href={`/services/${other.slug}`}
                 className="bg-white border border-gray-200 hover:border-blue-400 rounded-xl p-4 transition-colors"
               >
-                <div className="font-semibold text-gray-900 text-sm mb-1">{other.navLabel} 수리 안내</div>
+                <div className="font-semibold text-gray-900 text-sm mb-1">{guideLinkLabel(other)}</div>
                 <div className="text-xs text-gray-500 leading-relaxed">{other.h1}</div>
               </Link>
             ))}

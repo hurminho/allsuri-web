@@ -7,7 +7,7 @@ import { absoluteUrl } from '@/lib/site'
 
 const title = '무료 견적 요청 | 올수리'
 const description =
-  '누수·배관·화장실·방수 등 집수리 견적을 앱 설치 없이 요청하세요. 작업이 가능한 전문 업체가 직접 견적서를 보내드립니다.'
+  '누수·하수구 막힘·보일러 같은 집수리 설비와 입주청소·에어컨 청소 견적을 앱 설치 없이 요청하세요. 전문 업체가 직접 견적서를 보내드립니다.'
 
 export const metadata: Metadata = {
   title,

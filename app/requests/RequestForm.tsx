@@ -97,9 +97,11 @@ export default function RequestForm() {
   const [tradeId, setTradeId] = useState('')
   const estimateSeq = useRef(0)
 
+  // 안내 페이지에서 넘어온 세부 공종(?sub=)은 해당 대분류에 있는 이름일 때만 미리 고릅니다.
+  const initialSub = searchParams.get('sub') || ''
   const [form, setForm] = useState<FormData>({
     category: isCategory(initialCategory) ? initialCategory : '기타',
-    subcategory: '',
+    subcategory: tradeGroup(initialCategory)?.items.includes(initialSub) ? initialSub : '',
     title: '',
     description: '',
     address: '',

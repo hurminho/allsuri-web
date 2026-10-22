@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import Image from 'next/image'
-import { SERVICE_GUIDES } from '@/lib/service-guides'
+import { SERVICE_GUIDES, guideLinkLabel } from '@/lib/service-guides'
 import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/site'
 
 export default function Footer() {
@@ -13,7 +13,7 @@ export default function Footer() {
             <span className="text-white font-bold text-lg">올수리</span>
           </div>
           <p className="text-sm text-gray-400 leading-relaxed">
-            집수리 전문가와 고객을 연결하는<br />
+            집수리·설비·청소 전문가와 고객을 연결하는<br />
             견적 매칭 플랫폼
           </p>
         </div>
@@ -26,12 +26,12 @@ export default function Footer() {
           </ul>
         </div>
         <div>
-          <h3 className="text-white font-semibold mb-3">수리 안내</h3>
+          <h3 className="text-white font-semibold mb-3">설비·청소 안내</h3>
           <ul className="space-y-2 text-sm">
             {SERVICE_GUIDES.map((guide) => (
               <li key={guide.slug}>
                 <Link href={`/services/${guide.slug}`} className="hover:text-white transition-colors">
-                  {guide.navLabel} 수리 안내
+                  {guideLinkLabel(guide)}
                 </Link>
               </li>
             ))}
