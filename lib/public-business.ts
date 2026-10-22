@@ -38,7 +38,10 @@ export type FeaturedBusiness = {
   id: string
   userId: string
   businessName: string
+  /** 화면에 보여 줄 전화번호 (없으면 빈 문자열) */
   phonenumber: string
+  /** 웹사이트 링크 (있으면 회원 전화번호 대신 보여 줌) */
+  websiteUrl: string | null
   category: string
   region: string
   avatarUrl: string | null
@@ -131,11 +134,23 @@ export async function getPublicBusiness(id: string): Promise<PublicBusiness | nu
 /** 홈·견적 요청 페이지의 추천 업체(⭐ 광고) */
 export async function getFeaturedBusinesses(): Promise<FeaturedBusiness[]> {
   try {
-    const { data: featData } = await supabaseAdmin
+    // display_name·contact_phone·website_url 은 app_popups_featured_2026_10.sql 로 추가된 칸입니다.
+    // SQL 실행 전이면 예전 칸만 읽습니다.
+    const withDisplay = await supabaseAdmin
       .from('web_featured_businesses')
-      .select('id, user_id')
+      .select('id, user_id, display_name, contact_phone, website_url')
       .order('sort_order', { ascending: true })
-    const featList = (featData || []) as { id: string; user_id: string }[]
+    const featData = withDisplay.error
+      ? (await supabaseAdmin.from('web_featured_businesses').select('id, user_id').order('sort_order', { ascending: true })).data
+      : withDisplay.data
+    type FeatRow = {
+      id: string
+      user_id: string
+      display_name?: string | null
+      contact_phone?: string | null
+      website_url?: string | null
+    }
+    const featList = (featData || []) as FeatRow[]
     const ids = featList.map((f) => f.user_id).filter(Boolean)
     if (ids.length === 0) return []
 
@@ -164,11 +179,15 @@ export async function getFeaturedBusinesses(): Promise<FeaturedBusiness[]> {
         const u = usersMap.get(f.user_id)
         if (!u) return null
         const r = ratings[f.user_id]
+        const websiteUrl = /^https?:\/\//.test(f.website_url?.trim() ?? '') ? f.website_url!.trim() : null
+        // 표시 전화번호가 있으면 그 번호, 웹사이트만 있으면 전화번호는 숨김, 둘 다 없으면 회원 번호
+        const phone = f.contact_phone?.trim() || (websiteUrl ? '' : u.phonenumber || '')
         return {
           id: f.id,
           userId: f.user_id,
-          businessName: u.businessname || u.name || '',
-          phonenumber: u.phonenumber || '',
+          businessName: f.display_name?.trim() || u.businessname || u.name || '',
+          phonenumber: phone,
+          websiteUrl,
           category: joinList(u.specialties),
           region: joinList(u.serviceareas),
           avatarUrl: u.avatar_url || u.profile_image || null,
@@ -181,5 +200,14 @@ export async function getFeaturedBusinesses(): Promise<FeaturedBusiness[]> {
   } catch (e) {
     console.warn('[getFeaturedBusinesses] 로드 실패:', e)
     return []
+  }
+}
+
+/** 웹사이트 링크에서 보여 줄 주소 (https://okpick.online/ → okpick.online) */
+export function websiteLabel(url: string): string {
+  try {
+    return new URL(url).host.replace(/^www\./, '')
+  } catch {
+    return url
   }
 }

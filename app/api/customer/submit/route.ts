@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { splitAddressRegion } from '@/lib/address-region'
 import { sendTelegram, telegramNewWebOrder } from '@/lib/telegram'
+import { WEB_ORDERS_TO_APP } from '@/lib/web-order-rules'
 
 // 고객 견적 폼 제출:
 // 1. orders 테이블에 저장 (B2C 고객 레코드)
+//    저장 직후 운영자 개인 텔레그램으로 요청 내용 전체를 보냄 — lib/telegram.ts
+// ※ 아래 2·3 은 WEB_ORDERS_TO_APP(lib/web-order-rules.ts)가 true 일 때만 합니다. 지금은 꺼 둔 상태(텔레그램으로만 받음).
 // 2. marketplace_listings 테이블에도 저장 (B2B와 동일한 앱 오더 목록)
-//    (orders 저장 직후 운영자 개인 텔레그램으로도 알림 — lib/telegram.ts)
 // 3. 알림: 승인된 사업자에게 notifications INSERT.
 //    푸시(FCM)는 notifications INSERT 웹훅(send-push-webhook)이 한 건씩 보냅니다.
 //    → 응답 반환 전에 동기적으로 실행 (fire-and-forget 안 씀)
@@ -209,17 +211,40 @@ export async function POST(req: NextRequest) {
 
     const orderId = orderRow.id
 
-    await sendTelegram(telegramNewWebOrder({
+    const telegramText = telegramNewWebOrder({
       orderId,
       title,
       category,
+      subcategory: textOrNull(body.subcategory),
       address: fullAddress,
       visitDate,
       customerName,
       customerPhone: normalizedPhone,
+      customerEmail: textOrNull(customerEmail),
       description,
-      imageCount: Array.isArray(imageUrls) ? imageUrls.length : 0,
-    }))
+      urgency: textOrNull(body.urgency),
+      propertyType: textOrNull(body.propertyType),
+      aiSummary: textOrNull(body.aiSummary),
+      estimatedMin: intOrNull(body.estimatedMin),
+      estimatedMax: intOrNull(body.estimatedMax),
+      imageUrls: Array.isArray(imageUrls) ? imageUrls.map(String) : [],
+      appListed: WEB_ORDERS_TO_APP,
+    })
+    let telegram = await sendTelegram(telegramText)
+    if (!telegram.ok && !telegram.skipped) telegram = await sendTelegram(telegramText) // 한 번 더
+    if (!telegram.ok) {
+      // 앱 등록을 멈춘 동안에는 텔레그램이 유일한 알림입니다. 주문은 orders(관리자 웹 견적 관리)에 남아 있습니다.
+      console.error(`[submit] ❌ 텔레그램 알림 실패 (order=${orderId}): ${telegram.error || 'unknown'}`)
+    }
+
+    if (!WEB_ORDERS_TO_APP) {
+      return NextResponse.json({
+        success: true,
+        orderId,
+        listingId: null,
+        message: '견적 요청이 접수되었습니다.',
+      })
+    }
 
     // ── 2. marketplace_listings 에도 저장 ────────────────────────────
     // 사업자가 앱 오더 목록에서 볼 수 있도록

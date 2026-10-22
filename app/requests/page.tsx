@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import Link from 'next/link'
 import RequestForm from './RequestForm'
-import { getFeaturedBusinesses } from '@/lib/public-business'
+import { getFeaturedBusinesses, websiteLabel } from '@/lib/public-business'
 import { absoluteUrl } from '@/lib/site'
 
 const title = '무료 견적 요청 | 올수리'
@@ -16,6 +16,9 @@ export const metadata: Metadata = {
   alternates: { canonical: absoluteUrl('/requests') },
   openGraph: { title, description, url: absoluteUrl('/requests') },
 }
+
+// 관리자 페이지에서 바꾼 우수 업체·광고·사이트 설정이 배포 없이 5분 안에 반영되도록 다시 만듭니다.
+export const revalidate = 300
 
 export default async function RequestsPage() {
   const featured = await getFeaturedBusinesses()
@@ -79,6 +82,15 @@ export default async function RequestsPage() {
                   </div>
                   {/* 연락처 */}
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    {biz.websiteUrl && (
+                      <a href={biz.websiteUrl} target="_blank" rel="noopener"
+                        className="flex items-center gap-1 text-blue-600 font-semibold text-sm hover:text-blue-700">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 010 18M12 3a15 15 0 000 18" />
+                        </svg>
+                        {websiteLabel(biz.websiteUrl)}
+                      </a>
+                    )}
                     {biz.phonenumber && (
                       <a href={`tel:${biz.phonenumber}`}
                         className="flex items-center gap-1 text-blue-600 font-semibold text-sm hover:text-blue-700">

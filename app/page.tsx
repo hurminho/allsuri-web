@@ -2,13 +2,16 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import Image from 'next/image'
 import { supabase, CATEGORIES, CATEGORY_ICONS } from '@/lib/supabase'
-import { getFeaturedBusinesses, type FeaturedBusiness } from '@/lib/public-business'
+import { getFeaturedBusinesses, websiteLabel, type FeaturedBusiness } from '@/lib/public-business'
 import { SERVICE_GUIDES } from '@/lib/service-guides'
 import { SITE_NAME, absoluteUrl } from '@/lib/site'
 
 export const metadata: Metadata = {
   alternates: { canonical: absoluteUrl('/') },
 }
+
+// 관리자 페이지에서 바꾼 우수 업체·광고·사이트 설정이 배포 없이 5분 안에 반영되도록 다시 만듭니다.
+export const revalidate = 300
 
 const steps = [
   { num: '01', title: '견적 요청', desc: '어떤 수리가 필요한지\n간단히 입력하세요', icon: '📝' },
@@ -166,48 +169,64 @@ export default async function Home() {
             </div>
             <div className="grid md:grid-cols-3 gap-5">
               {featured.map((biz, idx) => (
-                <Link key={biz.id} href={`/business/${biz.userId}`}
-                  className="bg-white rounded-2xl border border-gray-100 hover:border-blue-300 hover:shadow-md p-5 transition-all relative group">
-                  {/* 순위 배지 */}
-                  <div className="absolute top-4 right-4 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                    {idx + 1}
-                  </div>
-                  {/* 아바타 */}
-                  <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xl mb-3 overflow-hidden">
-                    {biz.avatarUrl
-                      ? // eslint-disable-next-line @next/next/no-img-element
-                        <img src={biz.avatarUrl} alt={biz.businessName} className="w-full h-full object-cover" />
-                      : biz.businessName[0]}
-                  </div>
-                  {/* 업체명 */}
-                  <div className="font-bold text-gray-900 text-base mb-0.5 group-hover:text-blue-600 transition-colors">
-                    {biz.businessName}
-                  </div>
-                  {/* 평점 */}
-                  {biz.avgRating !== null ? (
-                    <div className="flex items-center gap-1 mb-1">
-                      <span className="text-yellow-400 text-sm">{'★'.repeat(Math.round(biz.avgRating))}{'☆'.repeat(5 - Math.round(biz.avgRating))}</span>
-                      <span className="text-sm font-semibold text-gray-700">{biz.avgRating.toFixed(1)}</span>
-                      <span className="text-xs text-gray-400">({biz.reviewCount})</span>
+                <div key={biz.id}
+                  className="bg-white rounded-2xl border border-gray-100 hover:border-blue-300 hover:shadow-md p-5 transition-all relative group flex flex-col">
+                  <Link href={`/business/${biz.userId}`} className="block flex-1">
+                    {/* 순위 배지 */}
+                    <div className="absolute top-4 right-4 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      {idx + 1}
                     </div>
-                  ) : (
-                    <div className="text-xs text-gray-300 mb-1">리뷰 없음</div>
-                  )}
-                  {/* 카테고리 · 지역 */}
-                  <div className="text-xs text-gray-500 mb-2">{biz.category}{biz.region ? ` · ${biz.region}` : ''}</div>
-                  {/* 연락처 */}
-                  {biz.phonenumber && (
-                    <div className="flex items-center gap-1 text-sm text-blue-600 font-semibold mt-2 pt-2 border-t border-gray-100">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                      </svg>
-                      {biz.phonenumber}
+                    {/* 아바타 */}
+                    <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xl mb-3 overflow-hidden">
+                      {biz.avatarUrl
+                        ? // eslint-disable-next-line @next/next/no-img-element
+                          <img src={biz.avatarUrl} alt={biz.businessName} className="w-full h-full object-cover" />
+                        : biz.businessName[0]}
+                    </div>
+                    {/* 업체명 */}
+                    <div className="font-bold text-gray-900 text-base mb-0.5 group-hover:text-blue-600 transition-colors">
+                      {biz.businessName}
+                    </div>
+                    {/* 평점 */}
+                    {biz.avgRating !== null ? (
+                      <div className="flex items-center gap-1 mb-1">
+                        <span className="text-yellow-400 text-sm">{'★'.repeat(Math.round(biz.avgRating))}{'☆'.repeat(5 - Math.round(biz.avgRating))}</span>
+                        <span className="text-sm font-semibold text-gray-700">{biz.avgRating.toFixed(1)}</span>
+                        <span className="text-xs text-gray-400">({biz.reviewCount})</span>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-gray-300 mb-1">리뷰 없음</div>
+                    )}
+                    {/* 카테고리 · 지역 */}
+                    <div className="text-xs text-gray-500 mb-2">{biz.category}{biz.region ? ` · ${biz.region}` : ''}</div>
+                    {biz.jobsCount > 0 && (
+                      <div className="text-xs text-gray-400 mt-1">완료 {biz.jobsCount}건</div>
+                    )}
+                  </Link>
+                  {/* 연락처: 웹사이트 → 전화 순 */}
+                  {(biz.websiteUrl || biz.phonenumber) && (
+                    <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-gray-100">
+                      {biz.websiteUrl && (
+                        <a href={biz.websiteUrl} target="_blank" rel="noopener"
+                          className="flex items-center gap-1 text-sm text-blue-600 font-semibold hover:text-blue-700">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 010 18M12 3a15 15 0 000 18" />
+                          </svg>
+                          {websiteLabel(biz.websiteUrl)}
+                        </a>
+                      )}
+                      {biz.phonenumber && (
+                        <a href={`tel:${biz.phonenumber}`}
+                          className="flex items-center gap-1 text-sm text-blue-600 font-semibold hover:text-blue-700">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                          </svg>
+                          {biz.phonenumber}
+                        </a>
+                      )}
                     </div>
                   )}
-                  {biz.jobsCount > 0 && (
-                    <div className="text-xs text-gray-400 mt-1">완료 {biz.jobsCount}건</div>
-                  )}
-                </Link>
+                </div>
               ))}
             </div>
           </div>

@@ -20,3 +20,10 @@ export function customerCanConfirmCompletion(
 
 export const COMPLETION_NOT_READY_MESSAGE =
   '사업자가 공사 완료를 알리거나 방문 희망일이 지나면 확인할 수 있습니다.'
+
+/**
+ * 웹 견적 요청을 앱 오더 목록(marketplace_listings)에 올리고 승인된 사업자에게 알릴지.
+ * false(지금): 앱에는 올리지 않고 운영자 텔레그램으로만 받습니다. 주문은 orders 에 그대로 저장됩니다.
+ * 다시 앱으로 보내려면 true 로 바꾸고 배포하세요.
+ */
+export const WEB_ORDERS_TO_APP = false
